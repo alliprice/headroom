@@ -203,6 +203,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.state = stateRunning
 			m.hasFocus = true
 			m.lastFocusTime = time.Now()
+			// If this is the first wake (debug sleep), run the full init sequence:
+			// probe codex availability and start the periodic tick timer.
+			if m.lastFetchTime == nil && m.errorMsg == "" {
+				return m, tea.Batch(m.probeCodex(), tickCmd())
+			}
 			return m, doFetch(m.codexAvailable)
 		}
 	}
