@@ -78,7 +78,7 @@ func NewModel(debugSleep bool) Model {
 func (m Model) Init() tea.Cmd {
 	if m.debugSleep {
 		// Start in sleep mode - no initial fetch (state already set in NewModel)
-		return tea.Batch(sleepTickCmd(), tea.WindowSize())
+		return tea.Batch(plasmaTickCmd(), tea.WindowSize())
 	}
 
 	// Probe for Codex availability
@@ -144,7 +144,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			elapsed := time.Since(m.lastFocusTime).Seconds()
 			if elapsed >= float64(parse.SleepAfterUnfocusedSeconds) {
 				m.state = stateSleeping
-				cmds = append(cmds, sleepTickCmd())
+				cmds = append(cmds, plasmaTickCmd())
 				return m, tea.Batch(cmds...)
 			}
 		}
@@ -178,7 +178,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.sleepFrame++
-		return m, sleepTickCmd()
+		return m, plasmaTickCmd()
 
 	case tea.KeyMsg:
 		return m.handleKey(msg)

@@ -2,23 +2,49 @@ package tui
 
 import "github.com/charmbracelet/lipgloss"
 
+// Color palette
+const (
+	colorBarFill  = lipgloss.Color("#A855F7") // Magenta/purple - usage within glide
+	colorBarOver  = lipgloss.Color("#FBBF24") // Yellow/amber - usage exceeding glide
+	colorBarEmpty = lipgloss.Color("#1E1028") // Dark purple-black
+	colorGlide    = lipgloss.Color("#F5F3FF") // Bright white - glide marker
+	colorBorder   = lipgloss.Color("#6D28D9") // Violet - panel border
+	colorTitle    = lipgloss.Color("#EC4899") // Coral pink - titles
+	colorNormal   = lipgloss.Color("#F5F3FF") // Off-white
+	colorDim      = lipgloss.Color("#A78BFA") // Lavender
+	colorError    = lipgloss.Color("#EF4444") // Red
+	colorStatusBg = lipgloss.Color("#1E1028") // Dark purple - status bar bg
+	colorBrand    = lipgloss.Color("#7C3AED") // Violet - brand accent
+)
+
 var (
-	// Bar segment styles
-	barBlue   = lipgloss.NewStyle().Background(lipgloss.Color("4"))                                                      // Blue - usage within glide slope
-	barYellow = lipgloss.NewStyle().Background(lipgloss.Color("3")).Foreground(lipgloss.Color("0"))                      // Yellow - usage exceeding glide slope
-	barEmpty  = lipgloss.NewStyle().Background(lipgloss.Color("0"))                                                      // Black/dark empty portion
-	barMarkerOverGlide  = lipgloss.NewStyle().Background(lipgloss.Color("4")).Foreground(lipgloss.Color("15")).Bold(true) // Marker on blue bg
-	barMarkerUnderGlide = lipgloss.NewStyle().Background(lipgloss.Color("0")).Foreground(lipgloss.Color("15")).Bold(true) // Marker on black bg
+	// Bar styles (used by bar.go)
+	barFillStyle  = lipgloss.NewStyle().Foreground(colorBarFill)
+	barOverStyle  = lipgloss.NewStyle().Foreground(colorBarOver)
+	barEmptyStyle = lipgloss.NewStyle().Foreground(colorBarEmpty).Background(colorBarEmpty)
+	barGlideStyle = lipgloss.NewStyle().Foreground(colorGlide).Bold(true)
 
-	// Text styles
-	titleStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true)  // Cyan bold
-	normalStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))            // White
-	boldStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Bold(true) // White bold
-	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))             // Dim white
-	errorStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))             // Red
+	// Text styles (used by view.go)
+	titleStyle  = lipgloss.NewStyle().Foreground(colorTitle).Bold(true)
+	normalStyle = lipgloss.NewStyle().Foreground(colorNormal)
+	boldStyle   = lipgloss.NewStyle().Foreground(colorNormal).Bold(true)
+	dimStyle    = lipgloss.NewStyle().Foreground(colorDim)
+	errorStyle  = lipgloss.NewStyle().Foreground(colorError)
 
-	// Sleep mode styles
-	sleepZStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Bold(true) // Blue z's
-	sleepLogoStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true) // Yellow/orange logo
-	sleepTextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))            // Dim text
+	// Panel styles (used by view.go)
+	panelStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorBorder).
+			Padding(1, 2)
+
+	// Status bar styles (used by view.go)
+	statusBarStyle = lipgloss.NewStyle().
+			Background(colorStatusBg).
+			Foreground(colorDim)
+
+	statusBrandStyle = lipgloss.NewStyle().
+				Background(colorBrand).
+				Foreground(colorNormal).
+				Bold(true).
+				Padding(0, 1)
 )
