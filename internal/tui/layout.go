@@ -71,3 +71,59 @@ func mergeOrder(existing, incoming []string) []string {
 	}
 	return existing
 }
+
+// moveKeyBefore reorders a full order slice by moving dragKey so that it
+// appears just before targetKey among the visible (non-hidden) entries.
+// Hidden entries keep their relative positions. Returns nil if no change.
+func moveKeyBefore(order []string, dragKey, targetKey string, hidden map[string]bool) []string {
+	// Build visible-only order.
+	var visible []string
+	for _, k := range order {
+		if !hidden[k] {
+			visible = append(visible, k)
+		}
+	}
+
+	// Find positions in visible order.
+	srcIdx, tgtIdx := -1, -1
+	for i, k := range visible {
+		if k == dragKey {
+			srcIdx = i
+		}
+		if k == targetKey {
+			tgtIdx = i
+		}
+	}
+	if srcIdx < 0 || tgtIdx < 0 || srcIdx == tgtIdx {
+		return nil
+	}
+
+	// Remove dragKey from visible order.
+	vis := make([]string, 0, len(visible)-1)
+	vis = append(vis, visible[:srcIdx]...)
+	vis = append(vis, visible[srcIdx+1:]...)
+
+	// Adjust target index after removal.
+	if tgtIdx > srcIdx {
+		tgtIdx--
+	}
+
+	// Insert dragKey before target.
+	reordered := make([]string, 0, len(visible))
+	reordered = append(reordered, vis[:tgtIdx]...)
+	reordered = append(reordered, dragKey)
+	reordered = append(reordered, vis[tgtIdx:]...)
+
+	// Rebuild full order preserving hidden entries' positions.
+	newOrder := make([]string, 0, len(order))
+	vi := 0
+	for _, k := range order {
+		if hidden[k] {
+			newOrder = append(newOrder, k)
+		} else {
+			newOrder = append(newOrder, reordered[vi])
+			vi++
+		}
+	}
+	return newOrder
+}

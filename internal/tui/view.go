@@ -226,7 +226,7 @@ func (m Model) View() tea.View {
 					if pi < len(panelBarInfos) {
 						for _, bi := range panelBarInfos[pi] {
 							absY := pyOff + contentOffY + bi.relY
-							r := image.Rect(contentOffX, absY, contentOffX+panelContentWidth, absY+1)
+							r := image.Rect(contentOffX, absY, contentOffX+panelContentWidth, absY+bi.height)
 							bg := barGeom{key: bi.key, bounds: r}
 							if pd.name == "Claude" {
 								m.layout.claudeBars = append(m.layout.claudeBars, bg)
@@ -258,7 +258,7 @@ func (m Model) View() tea.View {
 				if len(panelBarInfos) > 0 {
 					for _, bi := range panelBarInfos[0] {
 						absY := panelY + contentOffY + bi.relY
-						r := image.Rect(contentOffX, absY, contentOffX+panelContentWidth, absY+1)
+						r := image.Rect(contentOffX, absY, contentOffX+panelContentWidth, absY+bi.height)
 						bg := barGeom{key: bi.key, bounds: r}
 						if pd.name == "Claude" {
 							m.layout.claudeBars = append(m.layout.claudeBars, bg)
@@ -284,21 +284,22 @@ func (m Model) View() tea.View {
 			comp.AddLayers(errorLayer)
 		}
 
-		// Ghost layer during active drag.
-		if m.drag.phase == dragActive {
-			var ghostLabel string
-			switch m.drag.target {
-			case dragTargetPanel:
-				ghostLabel = m.drag.panelID
-			case dragTargetBar:
-				ghostLabel = m.drag.barKey
+		// Ghost layer during active drag — bordered card following the cursor.
+		if m.drag.phase == dragActive && m.drag.ghostLabel != "" {
+			ghostStyle := lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(colorDim).
+				Foreground(colorNormal).
+				Padding(0, 1)
+			ghost := ghostStyle.Render(m.drag.ghostLabel)
+			ghostW := lipgloss.Width(ghost)
+			ghostX := m.drag.currX - ghostW/2
+			if ghostX < 0 {
+				ghostX = 0
 			}
-			if ghostLabel != "" {
-				ghost := dimStyle.Render(" " + ghostLabel + " ")
-				ghostLayer := lipgloss.NewLayer(ghost).
-					X(m.drag.currX).Y(m.drag.currY).Z(10).ID("ghost")
-				comp.AddLayers(ghostLayer)
-			}
+			ghostLayer := lipgloss.NewLayer(ghost).
+				X(ghostX).Y(m.drag.currY).Z(10).ID("ghost")
+			comp.AddLayers(ghostLayer)
 		}
 
 		content = comp.Render()
@@ -520,11 +521,12 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen]
 }
 
-// barLineInfo records which line within a panel's content area corresponds
-// to a bar, for hit-testing.
+// barLineInfo records the region within a panel's content area that
+// corresponds to a category (title line + bar line), for hit-testing.
 type barLineInfo struct {
-	key  string
-	relY int // line offset within panel content
+	key    string
+	relY   int // first line of this category region (title or bar)
+	height int // number of lines this region spans
 }
 
 // renderPanelWithGeom is like renderPanel but also returns the relative line
@@ -569,6 +571,7 @@ func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width i
 		usage := cat.Utilization
 		glide := parse.CalcGlideSlope(cat.ResetsAt, cat.WindowSeconds)
 
+		catStartY := lineIdx
 		if showTitles {
 			resetStr := parse.FormatResetTime(cat.ResetsAt)
 			lines = append(lines, alignRow(boldStyle.Render(cat.Name), dimStyle.Render(resetStr), width))
@@ -576,8 +579,8 @@ func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width i
 		}
 
 		lines = append(lines, RenderBar(width, usage, glide))
-		barInfos = append(barInfos, barLineInfo{key: cat.Key, relY: lineIdx})
 		lineIdx++
+		barInfos = append(barInfos, barLineInfo{key: cat.Key, relY: catStartY, height: lineIdx - catStartY})
 
 		if showSpacing && idx < n-1 {
 			lines = append(lines, "")
@@ -590,6 +593,7 @@ func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width i
 			lines = append(lines, "")
 			lineIdx++
 		}
+		catStartY := lineIdx
 		if showTitles {
 			limitDollars := extra.MonthlyLimit / 100
 			usedDollars := extra.UsedCredits / 100
@@ -599,8 +603,8 @@ func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width i
 			lineIdx++
 		}
 		lines = append(lines, RenderBar(width, extra.Utilization, parse.CalcMonthGlide()))
-		barInfos = append(barInfos, barLineInfo{key: "extra_usage", relY: lineIdx})
 		lineIdx++
+		barInfos = append(barInfos, barLineInfo{key: "extra_usage", relY: catStartY, height: lineIdx - catStartY})
 	}
 
 	return strings.Join(lines, "\n"), barInfos
