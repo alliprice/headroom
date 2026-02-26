@@ -44,6 +44,14 @@ func CalcMonthGlide() float64 {
 	return elapsed / total * 100
 }
 
+// FormatMonthReset returns a human-readable string for when the current
+// calendar month ends (the next 1st), e.g. "Resets Mar 1".
+func FormatMonthReset() string {
+	now := time.Now()
+	nextFirst := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, now.Location())
+	return "Resets " + nextFirst.Format("Jan 2")
+}
+
 // FormatResetTime returns a human-readable string describing when resetsAt
 // will occur relative to now. resetsAt is an ISO 8601 / RFC 3339 timestamp.
 // Returns "" if resetsAt is empty or unparseable.

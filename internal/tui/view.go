@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
@@ -77,16 +76,19 @@ func (m Model) View() string {
 		// Stacked: split vertical space evenly between two panels.
 		eachHeight := (panelAreaHeight - vFrame*2) / 2
 
-		claudeContent := renderPanel("Claude", claudeCats, m.extra, panelContentWidth, eachHeight, m.lastFetchTime)
+		claudeContent := renderPanel(claudeCats, m.extra, panelContentWidth, eachHeight)
 		claudePanel := panelStyle.Width(panelWidth).Render(claudeContent)
+		claudePanel = embedBorderTitle(claudePanel, "Claude", panelWidth)
 
-		codexContent := renderPanel("Codex", codexCats, nil, panelContentWidth, eachHeight, m.lastFetchTime)
+		codexContent := renderPanel(codexCats, nil, panelContentWidth, eachHeight)
 		codexPanel := panelStyle.Width(panelWidth).Render(codexContent)
+		codexPanel = embedBorderTitle(codexPanel, "Codex", panelWidth)
 
 		panels = lipgloss.JoinVertical(lipgloss.Left, claudePanel, codexPanel)
 	} else {
-		claudeContent := renderPanel("Claude", claudeCats, m.extra, panelContentWidth, panelAreaHeight-vFrame, m.lastFetchTime)
+		claudeContent := renderPanel(claudeCats, m.extra, panelContentWidth, panelAreaHeight-vFrame)
 		panels = panelStyle.Width(panelWidth).Render(claudeContent)
+		panels = embedBorderTitle(panels, "Claude", panelWidth)
 	}
 	panels = lipgloss.PlaceHorizontal(w, lipgloss.Center, panels)
 
@@ -136,45 +138,38 @@ func (m Model) renderStatusBar() string {
 // renderPanel builds the content string for a single bordered panel. It
 // applies progressive compaction so the content fits within maxHeight rows.
 // width is the inner content width (border and padding already subtracted).
-func renderPanel(title string, cats []parse.Category, extra *parse.ExtraUsage, width int, maxHeight int, lastFetchTime *time.Time) string {
+// The panel title (e.g. "Claude") is rendered in the border by the caller.
+func renderPanel(cats []parse.Category, extra *parse.ExtraUsage, width int, maxHeight int) string {
 	n := len(cats)
 	if n == 0 {
 		return normalStyle.Render("No data")
 	}
 
-	// Panel title line.
-	panelTitle := titleStyle.Render(title)
-
 	// Progressive compaction.
-	// Always shown: panel title (1) + one bar per category (n).
-	used := 1 + n
-	level := 0
+	// Base: one bar per category (n lines).
+	used := n
 
-	// Steps:
-	//   step 0    : spacing between categories  (n-1 lines)
-	//   steps 1..n: info line per category       (reset time + percentage)
-	steps := []int{max(n-1, 0)}
-	for i := 0; i < n; i++ {
-		steps = append(steps, 1)
+	// Step 0: add title lines for all categories (+n lines).
+	showTitles := false
+	if used+n <= maxHeight {
+		showTitles = true
+		used += n
 	}
 
-	for _, cost := range steps {
-		if used+cost <= maxHeight {
-			level++
-			used += cost
-		}
-	}
-
-	showSpacing := level >= 1
-	showInfo := make([]bool, n)
-	for i := 0; i < n; i++ {
-		showInfo[i] = level >= 2+i
+	// Step 1: spacing between categories (+n-1 lines).
+	showSpacing := false
+	if showTitles && used+max(n-1, 0) <= maxHeight {
+		showSpacing = true
+		used += max(n-1, 0)
 	}
 
 	// Extra usage (Claude panel only, shown when space allows).
 	showExtra := false
 	if extra != nil {
-		cost := 3 // title line + blank line + bar
+		cost := 1 // bar
+		if showTitles {
+			cost += 2 // title + dollar subtitle
+		}
 		if showSpacing {
 			cost++
 		}
@@ -185,24 +180,22 @@ func renderPanel(title string, cats []parse.Category, extra *parse.ExtraUsage, w
 
 	// Build the content lines.
 	var lines []string
-	lines = append(lines, panelTitle)
 
 	for idx, cat := range cats {
 		usage := cat.Utilization
 		glide := parse.CalcGlideSlope(cat.ResetsAt, cat.WindowSeconds)
 
-		if showInfo[idx] {
+		if showTitles {
 			resetStr := parse.FormatResetTime(cat.ResetsAt)
-			pctStr := fmt.Sprintf("%.0f%%", usage)
 			t := table.New().
-				Row(resetStr, pctStr).
+				Row(cat.Name, resetStr).
 				Width(width).
 				Border(lipgloss.HiddenBorder()).
 				StyleFunc(func(row, col int) lipgloss.Style {
-					if col == 1 {
-						return dimStyle.Align(lipgloss.Right)
+					if col == 0 {
+						return boldStyle
 					}
-					return dimStyle
+					return dimStyle.Align(lipgloss.Right)
 				})
 			lines = append(lines, t.String())
 		}
@@ -219,25 +212,57 @@ func renderPanel(title string, cats []parse.Category, extra *parse.ExtraUsage, w
 		if showSpacing {
 			lines = append(lines, "")
 		}
-		limitDollars := extra.MonthlyLimit / 100
-		usedDollars := extra.UsedCredits / 100
-		name := "Extra usage (monthly)"
-		usageStr := fmt.Sprintf("$%.2f / $%.2f", usedDollars, limitDollars)
+		if showTitles {
+			limitDollars := extra.MonthlyLimit / 100
+			usedDollars := extra.UsedCredits / 100
+			name := "Extra usage (monthly)"
+			resetStr := parse.FormatMonthReset()
 
-		t := table.New().
-			Row(name, usageStr).
-			Width(width).
-			Border(lipgloss.HiddenBorder()).
-			StyleFunc(func(row, col int) lipgloss.Style {
-				if col == 0 {
-					return boldStyle
-				}
-				return dimStyle.Align(lipgloss.Right)
-			})
-		lines = append(lines, t.String(), "")
+			t := table.New().
+				Row(name, resetStr).
+				Width(width).
+				Border(lipgloss.HiddenBorder()).
+				StyleFunc(func(row, col int) lipgloss.Style {
+					if col == 0 {
+						return boldStyle
+					}
+					return dimStyle.Align(lipgloss.Right)
+				})
+			lines = append(lines, t.String())
+
+			usageStr := fmt.Sprintf("$%.2f / $%.2f", usedDollars, limitDollars)
+			lines = append(lines, dimStyle.Render(usageStr))
+		}
 		lines = append(lines, RenderBar(width, extra.Utilization, parse.CalcMonthGlide()))
 	}
 
+	return strings.Join(lines, "\n")
+}
+
+// embedBorderTitle replaces the top border line of a rendered panel with one
+// that embeds the given title, e.g. ╭─ Claude ──────────────╮
+func embedBorderTitle(rendered, title string, width int) string {
+	lines := strings.Split(rendered, "\n")
+	if len(lines) == 0 {
+		return rendered
+	}
+
+	border := lipgloss.RoundedBorder()
+	borderSt := lipgloss.NewStyle().Foreground(colorBorder)
+	styledTitle := titleStyle.Render(" " + title + " ")
+	titleWidth := lipgloss.Width(styledTitle)
+
+	// ╭(1) + ─(1) + styledTitle(titleWidth) + ─×N + ╮(1)
+	rightDashes := width - 3 - titleWidth
+	if rightDashes < 0 {
+		rightDashes = 0
+	}
+
+	topLine := borderSt.Render(border.TopLeft+border.Top) +
+		styledTitle +
+		borderSt.Render(strings.Repeat(border.Top, rightDashes)+border.TopRight)
+
+	lines[0] = topLine
 	return strings.Join(lines, "\n")
 }
 
