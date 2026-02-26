@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	"github.com/alliprice/headroom/internal/cli"
 )
 
 func main() {
@@ -13,7 +15,7 @@ func main() {
 	flag.Parse()
 
 	if *status {
-		if err := runStatus(); err != nil {
+		if err := cli.RunStatus(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -21,7 +23,7 @@ func main() {
 	}
 
 	if *jsonOut {
-		if err := runJSON(); err != nil {
+		if err := cli.RunJSON(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -32,17 +34,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-}
-
-// Placeholder functions - will be implemented in cli/ and tui/ packages
-func runStatus() error {
-	fmt.Println("TODO: --status mode")
-	return nil
-}
-
-func runJSON() error {
-	fmt.Println("TODO: --json mode")
-	return nil
 }
 
 func runTUI(debugSleep bool) error {
