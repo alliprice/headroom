@@ -3,6 +3,8 @@ package tui
 import (
 	"time"
 
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/alliprice/headroom/internal/fetch"
@@ -55,6 +57,10 @@ type Model struct {
 	// Capability
 	codexAvailable bool
 
+	// Help
+	keys keyMap
+	help help.Model
+
 	// Debug
 	debugSleep bool
 }
@@ -65,12 +71,21 @@ func NewModel(debugSleep bool) Model {
 	if debugSleep {
 		s = stateSleeping
 	}
+
+	keys := newKeyMap()
+	h := help.New()
+	h.Styles.ShortKey = helpKeyStyle
+	h.Styles.ShortDesc = helpDescStyle
+	h.Styles.ShortSeparator = helpSepStyle
+
 	return Model{
 		refreshFocused: parse.RefreshFocused,
 		hasFocus:       true,
 		lastFocusTime:  time.Now(),
 		state:          s,
 		debugSleep:     debugSleep,
+		keys:           keys,
+		help:           h,
 	}
 }
 
@@ -108,6 +123,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.help.Width = msg.Width
 		return m, nil
 
 	case tea.FocusMsg:
@@ -196,29 +212,27 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Sleep mode: any key wakes except q
 	if m.state == stateSleeping {
-		switch msg.String() {
-		case "q", "Q":
+		if key.Matches(msg, m.keys.Quit) {
 			return m, tea.Quit
-		default:
-			m.state = stateRunning
-			m.hasFocus = true
-			m.lastFocusTime = time.Now()
-			// If this is the first wake (debug sleep), run the full init sequence:
-			// probe codex availability and start the periodic tick timer.
-			if m.lastFetchTime == nil && m.errorMsg == "" {
-				return m, tea.Batch(m.probeCodex(), tickCmd())
-			}
-			return m, doFetch(m.codexAvailable)
 		}
+		m.state = stateRunning
+		m.hasFocus = true
+		m.lastFocusTime = time.Now()
+		// If this is the first wake (debug sleep), run the full init sequence:
+		// probe codex availability and start the periodic tick timer.
+		if m.lastFetchTime == nil && m.errorMsg == "" {
+			return m, tea.Batch(m.probeCodex(), tickCmd())
+		}
+		return m, doFetch(m.codexAvailable)
 	}
 
 	// Normal mode
-	switch msg.String() {
-	case "q", "Q", "ctrl+c":
+	switch {
+	case key.Matches(msg, m.keys.Quit):
 		return m, tea.Quit
-	case "r", "R":
+	case key.Matches(msg, m.keys.Refresh):
 		return m, doFetch(m.codexAvailable)
-	case "t", "T":
+	case key.Matches(msg, m.keys.Interval):
 		m.inputMode = inputInterval
 		m.inputBuf = ""
 		return m, nil

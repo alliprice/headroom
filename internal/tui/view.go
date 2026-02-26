@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 
 	"github.com/alliprice/headroom/internal/parse"
 )
@@ -63,18 +64,18 @@ func (m Model) View() string {
 	}
 
 	// Panel layout constants.
-	const borderRowOverhead = 4 // top/bottom border (2) + top/bottom padding (2)
-	const borderColOverhead = 6 // left/right border (2) + left/right padding (4)
-	const panelMargin = 2       // columns of space on each side of the panel
+	const panelMargin = 2 // columns of space on each side of the panel
+	hFrame := panelStyle.GetHorizontalFrameSize()
+	vFrame := panelStyle.GetVerticalFrameSize()
 
 	// panelStyle.Width() includes border+padding but not margin.
 	panelWidth := w - panelMargin*2
-	panelContentWidth := panelWidth - borderColOverhead
+	panelContentWidth := panelWidth - hFrame
 
 	var panels string
 	if len(codexCats) > 0 {
 		// Stacked: split vertical space evenly between two panels.
-		eachHeight := (panelAreaHeight - borderRowOverhead*2) / 2
+		eachHeight := (panelAreaHeight - vFrame*2) / 2
 
 		claudeContent := renderPanel("Claude", claudeCats, m.extra, panelContentWidth, eachHeight, m.lastFetchTime)
 		claudePanel := panelStyle.Width(panelWidth).Render(claudeContent)
@@ -84,7 +85,7 @@ func (m Model) View() string {
 
 		panels = lipgloss.JoinVertical(lipgloss.Left, claudePanel, codexPanel)
 	} else {
-		claudeContent := renderPanel("Claude", claudeCats, m.extra, panelContentWidth, panelAreaHeight-borderRowOverhead, m.lastFetchTime)
+		claudeContent := renderPanel("Claude", claudeCats, m.extra, panelContentWidth, panelAreaHeight-vFrame, m.lastFetchTime)
 		panels = panelStyle.Width(panelWidth).Render(claudeContent)
 	}
 	panels = lipgloss.PlaceHorizontal(w, lipgloss.Center, panels)
@@ -117,8 +118,8 @@ func (m Model) renderStatusBar() string {
 		right = boldStyle.Render("Interval (seconds): ") + normalStyle.Render(m.inputBuf+"_")
 	} else {
 		updated := parse.FormatUpdatedAgo(m.lastFetchTime)
-		hints := fmt.Sprintf("q:quit r:refresh t:interval(%ds)", m.refreshFocused)
-		right = dimStyle.Render(updated + "  " + hints)
+		helpView := m.help.View(m.keys)
+		right = dimStyle.Render(updated) + "  " + helpView
 	}
 
 	brandWidth := lipgloss.Width(brand)
@@ -193,14 +194,17 @@ func renderPanel(title string, cats []parse.Category, extra *parse.ExtraUsage, w
 		if showInfo[idx] {
 			resetStr := parse.FormatResetTime(cat.ResetsAt)
 			pctStr := fmt.Sprintf("%.0f%%", usage)
-			left := dimStyle.Render(resetStr)
-			right := dimStyle.Render(pctStr)
-			gap := width - lipgloss.Width(resetStr) - lipgloss.Width(pctStr)
-			line := left
-			if gap > 0 {
-				line += strings.Repeat(" ", gap) + right
-			}
-			lines = append(lines, line)
+			t := table.New().
+				Row(resetStr, pctStr).
+				Width(width).
+				Border(lipgloss.HiddenBorder()).
+				StyleFunc(func(row, col int) lipgloss.Style {
+					if col == 1 {
+						return dimStyle.Align(lipgloss.Right)
+					}
+					return dimStyle
+				})
+			lines = append(lines, t.String())
 		}
 
 		lines = append(lines, RenderBar(width, usage, glide))
@@ -220,14 +224,17 @@ func renderPanel(title string, cats []parse.Category, extra *parse.ExtraUsage, w
 		name := "Extra usage (monthly)"
 		usageStr := fmt.Sprintf("$%.2f / $%.2f", usedDollars, limitDollars)
 
-		nameSt := boldStyle.Render(name)
-		usageSt := dimStyle.Render(usageStr)
-		gap := width - lipgloss.Width(name) - lipgloss.Width(usageStr)
-		line := nameSt
-		if gap > 0 {
-			line += strings.Repeat(" ", gap) + usageSt
-		}
-		lines = append(lines, line, "")
+		t := table.New().
+			Row(name, usageStr).
+			Width(width).
+			Border(lipgloss.HiddenBorder()).
+			StyleFunc(func(row, col int) lipgloss.Style {
+				if col == 0 {
+					return boldStyle
+				}
+				return dimStyle.Align(lipgloss.Right)
+			})
+		lines = append(lines, t.String(), "")
 		lines = append(lines, RenderBar(width, extra.Utilization, 100))
 	}
 

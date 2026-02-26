@@ -4,8 +4,6 @@ import "github.com/charmbracelet/lipgloss"
 
 // Color palette
 const (
-	colorBarFill  = lipgloss.Color("#A855F7") // Magenta/purple - usage within glide
-	colorBarOver  = lipgloss.Color("#FBBF24") // Yellow/amber - usage exceeding glide
 	colorBarEmpty = lipgloss.Color("#1E1028") // Dark purple-black
 	colorGlide    = lipgloss.Color("#F5F3FF") // Bright white - glide marker
 	colorBorder   = lipgloss.Color("#6D28D9") // Violet - panel border
@@ -19,10 +17,7 @@ const (
 
 var (
 	// Bar styles (used by bar.go)
-	barFillStyle  = lipgloss.NewStyle().Foreground(colorBarFill).Background(colorBarEmpty)
-	barOverStyle  = lipgloss.NewStyle().Foreground(colorBarOver).Background(colorBarEmpty)
 	barEmptyStyle = lipgloss.NewStyle().Foreground(colorBarEmpty).Background(colorBarEmpty)
-	barGlideStyle = lipgloss.NewStyle().Foreground(colorGlide).Bold(true)
 
 	// Text styles (used by view.go)
 	titleStyle  = lipgloss.NewStyle().Foreground(colorTitle).Bold(true)
@@ -47,4 +42,9 @@ var (
 				Foreground(colorNormal).
 				Bold(true).
 				Padding(0, 1)
+
+	// Help styles (used by bubbles/help in status bar)
+	helpKeyStyle  = lipgloss.NewStyle().Foreground(colorNormal).Bold(true)
+	helpDescStyle = lipgloss.NewStyle().Foreground(colorDim)
+	helpSepStyle  = lipgloss.NewStyle().Foreground(colorDim)
 )

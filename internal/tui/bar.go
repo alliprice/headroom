@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"strings"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 // Block characters by eighths for sub-cell precision
@@ -19,8 +21,6 @@ var (
 	gradOverStart = [3]uint8{251, 191, 36} // #FBBF24
 	gradOverEnd   = [3]uint8{249, 115, 22} // #F97316
 
-	// Background for all bar cells
-	barBgR, barBgG, barBgB uint8 = 30, 16, 40 // #1E1028
 )
 
 // lerpRGB linearly interpolates between two RGB colors at fraction t in [0,1].
@@ -46,33 +46,63 @@ func RenderBar(width int, usagePct, glidePct float64) string {
 	partialEighths := usageEighths % 8
 
 	var buf strings.Builder
-	buf.Grow(width * 25) // ~25 bytes per cell with ANSI codes
+	buf.Grow(width * 30) // ~30 bytes per cell with lipgloss styles
+
+	emptyStart := -1 // track run of empty cells for batching
+
+	flushEmpty := func(end int) {
+		if emptyStart >= 0 {
+			count := end - emptyStart
+			if count > 0 {
+				buf.WriteString(barEmptyStyle.Render(strings.Repeat(" ", count)))
+			}
+			emptyStart = -1
+		}
+	}
 
 	for i := 0; i < width; i++ {
 		switch {
 		case i == glidePos:
-			// Glide marker: bright white on dark bg
-			fmt.Fprintf(&buf, "\x1b[38;2;245;243;255;48;2;%d;%d;%dm│\x1b[0m",
-				barBgR, barBgG, barBgB)
+			flushEmpty(i)
+			buf.WriteString(
+				lipgloss.NewStyle().
+					Foreground(colorGlide).
+					Background(colorBarEmpty).
+					Bold(true).
+					Render("│"),
+			)
 
 		case i < fullCells:
-			// Full block with gradient color
+			flushEmpty(i)
 			r, g, b := barGradientColor(i, glidePos, fullCells, width)
-			fmt.Fprintf(&buf, "\x1b[38;2;%d;%d;%d;48;2;%d;%d;%dm█\x1b[0m",
-				r, g, b, barBgR, barBgG, barBgB)
+			hexColor := fmt.Sprintf("#%02x%02x%02x", r, g, b)
+			buf.WriteString(
+				lipgloss.NewStyle().
+					Foreground(lipgloss.Color(hexColor)).
+					Background(colorBarEmpty).
+					Render("█"),
+			)
 
 		case i == fullCells && partialEighths > 0:
-			// Partial block (transition cell)
+			flushEmpty(i)
 			r, g, b := barGradientColor(i, glidePos, fullCells, width)
-			fmt.Fprintf(&buf, "\x1b[38;2;%d;%d;%d;48;2;%d;%d;%dm%s\x1b[0m",
-				r, g, b, barBgR, barBgG, barBgB, blockChars[partialEighths])
+			hexColor := fmt.Sprintf("#%02x%02x%02x", r, g, b)
+			buf.WriteString(
+				lipgloss.NewStyle().
+					Foreground(lipgloss.Color(hexColor)).
+					Background(colorBarEmpty).
+					Render(blockChars[partialEighths]),
+			)
 
 		default:
-			// Empty cell: dark bg
-			fmt.Fprintf(&buf, "\x1b[48;2;%d;%d;%dm \x1b[0m",
-				barBgR, barBgG, barBgB)
+			// Accumulate empty cells for batched render
+			if emptyStart < 0 {
+				emptyStart = i
+			}
 		}
 	}
+
+	flushEmpty(width)
 
 	return buf.String()
 }
