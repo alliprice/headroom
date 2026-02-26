@@ -32,6 +32,18 @@ func CalcGlideSlope(resetsAt string, windowSeconds int) float64 {
 	return pct
 }
 
+// CalcMonthGlide returns the percentage of the current calendar month that
+// has elapsed, as a value in [0, 100]. Useful for pacing extra usage against
+// a monthly budget.
+func CalcMonthGlide() float64 {
+	now := time.Now()
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	monthEnd := monthStart.AddDate(0, 1, 0)
+	total := monthEnd.Sub(monthStart).Seconds()
+	elapsed := now.Sub(monthStart).Seconds()
+	return elapsed / total * 100
+}
+
 // FormatResetTime returns a human-readable string describing when resetsAt
 // will occur relative to now. resetsAt is an ISO 8601 / RFC 3339 timestamp.
 // Returns "" if resetsAt is empty or unparseable.

@@ -235,7 +235,7 @@ func renderPanel(title string, cats []parse.Category, extra *parse.ExtraUsage, w
 				return dimStyle.Align(lipgloss.Right)
 			})
 		lines = append(lines, t.String(), "")
-		lines = append(lines, RenderBar(width, extra.Utilization, 100))
+		lines = append(lines, RenderBar(width, extra.Utilization, parse.CalcMonthGlide()))
 	}
 
 	return strings.Join(lines, "\n")
