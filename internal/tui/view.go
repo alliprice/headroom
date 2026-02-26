@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/lipgloss/table"
 
 	"github.com/alliprice/headroom/internal/parse"
 )
@@ -67,9 +66,12 @@ func (m Model) View() string {
 	hFrame := panelStyle.GetHorizontalFrameSize()
 	vFrame := panelStyle.GetVerticalFrameSize()
 
-	// panelStyle.Width() includes border+padding but not margin.
+	// lipgloss Width() includes padding but NOT borders, so subtract
+	// the border width from our target to get the correct Width() arg.
 	panelWidth := w - panelMargin*2
+	borderW := panelStyle.GetBorderLeftSize() + panelStyle.GetBorderRightSize()
 	panelContentWidth := panelWidth - hFrame
+	widthArg := panelWidth - borderW // Width() excludes borders
 
 	var panels string
 	if len(codexCats) > 0 {
@@ -77,17 +79,17 @@ func (m Model) View() string {
 		eachHeight := (panelAreaHeight - vFrame*2) / 2
 
 		claudeContent := renderPanel(claudeCats, m.extra, panelContentWidth, eachHeight)
-		claudePanel := panelStyle.Width(panelWidth).Render(claudeContent)
+		claudePanel := panelStyle.Width(widthArg).Render(claudeContent)
 		claudePanel = embedBorderTitle(claudePanel, "Claude", panelWidth)
 
 		codexContent := renderPanel(codexCats, nil, panelContentWidth, eachHeight)
-		codexPanel := panelStyle.Width(panelWidth).Render(codexContent)
+		codexPanel := panelStyle.Width(widthArg).Render(codexContent)
 		codexPanel = embedBorderTitle(codexPanel, "Codex", panelWidth)
 
 		panels = lipgloss.JoinVertical(lipgloss.Left, claudePanel, codexPanel)
 	} else {
 		claudeContent := renderPanel(claudeCats, m.extra, panelContentWidth, panelAreaHeight-vFrame)
-		panels = panelStyle.Width(panelWidth).Render(claudeContent)
+		panels = panelStyle.Width(widthArg).Render(claudeContent)
 		panels = embedBorderTitle(panels, "Claude", panelWidth)
 	}
 	panels = lipgloss.PlaceHorizontal(w, lipgloss.Center, panels)
@@ -187,17 +189,7 @@ func renderPanel(cats []parse.Category, extra *parse.ExtraUsage, width int, maxH
 
 		if showTitles {
 			resetStr := parse.FormatResetTime(cat.ResetsAt)
-			t := table.New().
-				Row(cat.Name, resetStr).
-				Width(width).
-				Border(lipgloss.HiddenBorder()).
-				StyleFunc(func(row, col int) lipgloss.Style {
-					if col == 0 {
-						return boldStyle
-					}
-					return dimStyle.Align(lipgloss.Right)
-				})
-			lines = append(lines, t.String())
+			lines = append(lines, alignRow(boldStyle.Render(cat.Name), dimStyle.Render(resetStr), width))
 		}
 
 		lines = append(lines, RenderBar(width, usage, glide))
@@ -217,18 +209,7 @@ func renderPanel(cats []parse.Category, extra *parse.ExtraUsage, width int, maxH
 			usedDollars := extra.UsedCredits / 100
 			name := "Extra usage (monthly)"
 			resetStr := parse.FormatMonthReset()
-
-			t := table.New().
-				Row(name, resetStr).
-				Width(width).
-				Border(lipgloss.HiddenBorder()).
-				StyleFunc(func(row, col int) lipgloss.Style {
-					if col == 0 {
-						return boldStyle
-					}
-					return dimStyle.Align(lipgloss.Right)
-				})
-			lines = append(lines, t.String())
+			lines = append(lines, alignRow(boldStyle.Render(name), dimStyle.Render(resetStr), width))
 
 			usageStr := fmt.Sprintf("$%.2f / $%.2f", usedDollars, limitDollars)
 			lines = append(lines, dimStyle.Render(usageStr))
@@ -237,6 +218,17 @@ func renderPanel(cats []parse.Category, extra *parse.ExtraUsage, width int, maxH
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// alignRow places left on the left and right on the right within the given
+// width, filling the gap with spaces. Both left and right should already be
+// styled (the gap uses no styling).
+func alignRow(left, right string, width int) string {
+	gap := width - lipgloss.Width(left) - lipgloss.Width(right)
+	if gap > 0 {
+		return left + strings.Repeat(" ", gap) + right
+	}
+	return left
 }
 
 // embedBorderTitle replaces the top border line of a rendered panel with one
