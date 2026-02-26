@@ -102,9 +102,8 @@ func (m Model) View() tea.View {
 	vFrame := panelStyle.GetVerticalFrameSize()
 
 	panelWidth := w - panelMargin*2
-	borderW := panelStyle.GetBorderLeftSize() + panelStyle.GetBorderRightSize()
 	panelContentWidth := panelWidth - hFrame
-	widthArg := panelWidth - borderW
+	widthArg := panelWidth // v2: Width() includes borders and padding
 
 	// Determine panel rendering order.
 	type panelDef struct {
@@ -273,17 +272,16 @@ func (m Model) View() tea.View {
 			m.layout.statusBar = image.Rect(0, h-1, w, h)
 		}
 
-		// Build layers.
+		// Build layers via Compositor (handles X/Y/Z positioning).
 		bgLayer := lipgloss.NewLayer(bgContent).Z(0).ID("bg")
 		panelLayer := lipgloss.NewLayer(panels).X(panelX).Y(panelY).Z(1).ID("panels")
 		statusLayer := lipgloss.NewLayer(statusBar).X(0).Y(h - 1).Z(2).ID("status")
 
-		canvas := lipgloss.NewCanvas(w, h)
-		canvas.Compose(bgLayer).Compose(panelLayer).Compose(statusLayer)
+		comp := lipgloss.NewCompositor(bgLayer, panelLayer, statusLayer)
 
 		if errorLine != "" {
 			errorLayer := lipgloss.NewLayer(errorLine).X(0).Y(0).Z(2).ID("error")
-			canvas.Compose(errorLayer)
+			comp.AddLayers(errorLayer)
 		}
 
 		// Ghost layer during active drag.
@@ -299,11 +297,11 @@ func (m Model) View() tea.View {
 				ghost := dimStyle.Render(" " + ghostLabel + " ")
 				ghostLayer := lipgloss.NewLayer(ghost).
 					X(m.drag.currX).Y(m.drag.currY).Z(10).ID("ghost")
-				canvas.Compose(ghostLayer)
+				comp.AddLayers(ghostLayer)
 			}
 		}
 
-		content = canvas.Render()
+		content = comp.Render()
 	} else {
 		// Fallback: no background grid yet.
 		panels = lipgloss.PlaceHorizontal(w, lipgloss.Center, panels)
