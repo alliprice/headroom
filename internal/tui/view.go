@@ -62,15 +62,14 @@ func (m Model) View() string {
 		panelAreaHeight -= 2 // error line + trailing blank line
 	}
 
-	// Panel border+padding overhead:
-	//   2 rows for top/bottom border + 2 rows for top/bottom padding = 4 rows
-	//   4 columns for left/right border (1 each) + left/right padding (2 each) = 6 cols
-	const borderRowOverhead = 4
-	const borderColOverhead = 6
+	// Panel layout constants.
+	const borderRowOverhead = 4 // top/bottom border (2) + top/bottom padding (2)
+	const borderColOverhead = 6 // left/right border (2) + left/right padding (4)
+	const panelMargin = 2       // columns of space on each side of the panel
 
-	// panelStyle.Width() includes border+padding, so pass w for full-width
-	// panels. The actual text content width is w minus the overhead.
-	panelContentWidth := w - borderColOverhead
+	// panelStyle.Width() includes border+padding but not margin.
+	panelWidth := w - panelMargin*2
+	panelContentWidth := panelWidth - borderColOverhead
 
 	var panels string
 	if len(codexCats) > 0 {
@@ -78,16 +77,17 @@ func (m Model) View() string {
 		eachHeight := (panelAreaHeight - borderRowOverhead*2) / 2
 
 		claudeContent := renderPanel("Claude", claudeCats, m.extra, panelContentWidth, eachHeight, m.lastFetchTime)
-		claudePanel := panelStyle.Width(w).Render(claudeContent)
+		claudePanel := panelStyle.Width(panelWidth).Render(claudeContent)
 
 		codexContent := renderPanel("Codex", codexCats, nil, panelContentWidth, eachHeight, m.lastFetchTime)
-		codexPanel := panelStyle.Width(w).Render(codexContent)
+		codexPanel := panelStyle.Width(panelWidth).Render(codexContent)
 
 		panels = lipgloss.JoinVertical(lipgloss.Left, claudePanel, codexPanel)
 	} else {
 		claudeContent := renderPanel("Claude", claudeCats, m.extra, panelContentWidth, panelAreaHeight-borderRowOverhead, m.lastFetchTime)
-		panels = panelStyle.Width(w).Render(claudeContent)
+		panels = panelStyle.Width(panelWidth).Render(claudeContent)
 	}
+	panels = lipgloss.PlaceHorizontal(w, lipgloss.Center, panels)
 
 	// Compose final view.
 	var sections []string
