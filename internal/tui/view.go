@@ -68,6 +68,8 @@ func (m Model) View() string {
 	const borderRowOverhead = 4
 	const borderColOverhead = 6
 
+	// panelStyle.Width() includes border+padding, so pass w for full-width
+	// panels. The actual text content width is w minus the overhead.
 	panelContentWidth := w - borderColOverhead
 
 	var panels string
@@ -76,15 +78,15 @@ func (m Model) View() string {
 		eachHeight := (panelAreaHeight - borderRowOverhead*2) / 2
 
 		claudeContent := renderPanel("Claude", claudeCats, m.extra, panelContentWidth, eachHeight, m.lastFetchTime)
-		claudePanel := panelStyle.Width(panelContentWidth).Render(claudeContent)
+		claudePanel := panelStyle.Width(w).Render(claudeContent)
 
 		codexContent := renderPanel("Codex", codexCats, nil, panelContentWidth, eachHeight, m.lastFetchTime)
-		codexPanel := panelStyle.Width(panelContentWidth).Render(codexContent)
+		codexPanel := panelStyle.Width(w).Render(codexContent)
 
 		panels = lipgloss.JoinVertical(lipgloss.Left, claudePanel, codexPanel)
 	} else {
 		claudeContent := renderPanel("Claude", claudeCats, m.extra, panelContentWidth, panelAreaHeight-borderRowOverhead, m.lastFetchTime)
-		panels = panelStyle.Width(panelContentWidth).Render(claudeContent)
+		panels = panelStyle.Width(w).Render(claudeContent)
 	}
 
 	// Compose final view.
@@ -148,15 +150,11 @@ func renderPanel(title string, cats []parse.Category, extra *parse.ExtraUsage, w
 	level := 0
 
 	// Steps:
-	//   step 0        : spacing between bars    (n-1 lines)
-	//   steps 1..n    : category title line     (1 line each)
-	//   steps n+1..2n : category reset line     (1 line each)
+	//   step 0    : spacing between categories  (n-1 lines)
+	//   steps 1..n: info line per category       (reset time + percentage)
 	steps := []int{max(n-1, 0)}
 	for i := 0; i < n; i++ {
-		steps = append(steps, 1) // category title
-	}
-	for i := 0; i < n; i++ {
-		steps = append(steps, 1) // reset line
+		steps = append(steps, 1)
 	}
 
 	for _, cost := range steps {
@@ -167,18 +165,15 @@ func renderPanel(title string, cats []parse.Category, extra *parse.ExtraUsage, w
 	}
 
 	showSpacing := level >= 1
-	showCatTitle := make([]bool, n)
-	showReset := make([]bool, n)
+	showInfo := make([]bool, n)
 	for i := 0; i < n; i++ {
-		showCatTitle[i] = level >= 2+i
-		showReset[i] = level >= 2+n+i
+		showInfo[i] = level >= 2+i
 	}
 
 	// Extra usage (Claude panel only, shown when space allows).
 	showExtra := false
 	if extra != nil {
-		// extra costs: title line + blank line + bar = 3; +1 if spacing before it
-		cost := 3
+		cost := 3 // title line + blank line + bar
 		if showSpacing {
 			cost++
 		}
@@ -195,25 +190,17 @@ func renderPanel(title string, cats []parse.Category, extra *parse.ExtraUsage, w
 		usage := cat.Utilization
 		glide := parse.CalcGlideSlope(cat.ResetsAt, cat.WindowSeconds)
 
-		if showCatTitle[idx] {
-			name := boldStyle.Render(cat.Name)
-			usagePctStr := fmt.Sprintf("%.0f%% used", usage)
-			usageStr := dimStyle.Render(usagePctStr)
-			gap := width - lipgloss.Width(cat.Name) - lipgloss.Width(usagePctStr)
-			line := name
+		if showInfo[idx] {
+			resetStr := parse.FormatResetTime(cat.ResetsAt)
+			pctStr := fmt.Sprintf("%.0f%%", usage)
+			left := dimStyle.Render(resetStr)
+			right := dimStyle.Render(pctStr)
+			gap := width - lipgloss.Width(resetStr) - lipgloss.Width(pctStr)
+			line := left
 			if gap > 0 {
-				line += strings.Repeat(" ", gap) + usageStr
+				line += strings.Repeat(" ", gap) + right
 			}
 			lines = append(lines, line)
-		}
-
-		if showReset[idx] {
-			resetStr := parse.FormatResetTime(cat.ResetsAt)
-			if resetStr != "" {
-				lines = append(lines, dimStyle.Render(resetStr))
-			} else {
-				lines = append(lines, "")
-			}
 		}
 
 		lines = append(lines, RenderBar(width, usage, glide))
