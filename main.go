@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"os"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/alliprice/headroom/internal/cli"
+	"github.com/alliprice/headroom/internal/tui"
 )
 
 func main() {
@@ -37,6 +40,11 @@ func main() {
 }
 
 func runTUI(debugSleep bool) error {
-	fmt.Println("TODO: TUI mode")
-	return nil
+	m := tui.NewModel(debugSleep)
+	p := tea.NewProgram(m,
+		tea.WithAltScreen(),
+		tea.WithReportFocus(),
+	)
+	_, err := p.Run()
+	return err
 }

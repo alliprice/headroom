@@ -257,8 +257,3 @@ func (m Model) handleIntervalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-// View implements tea.Model.
-func (m Model) View() string {
-	// Placeholder - will be implemented in view.go
-	return "headroom TUI loading..."
-}
