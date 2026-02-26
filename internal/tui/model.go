@@ -61,6 +61,11 @@ type Model struct {
 
 	// Debug
 	debugSleep bool
+
+	// Background
+	bgGrid   []bgCell
+	bgWidth  int
+	bgHeight int
 }
 
 // NewModel creates a new headroom TUI model.
@@ -114,6 +119,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.bgGrid = generateBgGrid(m.width, m.height)
+		m.bgWidth = m.width
+		m.bgHeight = m.height
 		return m, nil
 
 	case tea.FocusMsg:

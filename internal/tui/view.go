@@ -75,8 +75,8 @@ func (m Model) View() string {
 
 	var panels string
 	if len(codexCats) > 0 {
-		// Stacked: split vertical space evenly between two panels.
-		eachHeight := (panelAreaHeight - vFrame*2) / 2
+		// Stacked: split vertical space evenly between two panels, with 1-row gap.
+		eachHeight := (panelAreaHeight - vFrame*2 - 1) / 2
 
 		claudeContent := renderPanel(claudeCats, m.extra, panelContentWidth, eachHeight)
 		claudePanel := panelStyle.Width(widthArg).Render(claudeContent)
@@ -86,15 +86,20 @@ func (m Model) View() string {
 		codexPanel := panelStyle.Width(widthArg).Render(codexContent)
 		codexPanel = embedBorderTitle(codexPanel, "Codex", panelWidth)
 
-		panels = lipgloss.JoinVertical(lipgloss.Left, claudePanel, codexPanel)
+		panels = lipgloss.JoinVertical(lipgloss.Left, claudePanel, "", codexPanel)
 	} else {
 		claudeContent := renderPanel(claudeCats, m.extra, panelContentWidth, panelAreaHeight-vFrame)
 		panels = panelStyle.Width(widthArg).Render(claudeContent)
 		panels = embedBorderTitle(panels, "Claude", panelWidth)
 	}
+	// Composite panels onto the background grid.
+	if len(m.bgGrid) > 0 {
+		return compositeWithBackground(panels, errorLine, statusBar, m.bgGrid, m.bgWidth, m.bgHeight, w, h)
+	}
+
+	// Fallback: no background grid yet.
 	panels = lipgloss.PlaceHorizontal(w, lipgloss.Center, panels)
 
-	// Compose final view.
 	var sections []string
 	if errorLine != "" {
 		sections = append(sections, errorLine, "")
@@ -103,7 +108,6 @@ func (m Model) View() string {
 
 	body := lipgloss.JoinVertical(lipgloss.Left, sections...)
 
-	// Pad remaining height so the status bar is always at the bottom.
 	bodyHeight := lipgloss.Height(body)
 	if bodyHeight < h-1 {
 		body += strings.Repeat("\n", h-1-bodyHeight)
