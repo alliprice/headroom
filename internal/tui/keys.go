@@ -8,6 +8,7 @@ type keyMap struct {
 	Quit     key.Binding
 	Refresh  key.Binding
 	Interval key.Binding
+	Reset    key.Binding
 }
 
 func newKeyMap() keyMap {
@@ -24,15 +25,19 @@ func newKeyMap() keyMap {
 			key.WithKeys("t", "T"),
 			key.WithHelp("t", "interval"),
 		),
+		Reset: key.NewBinding(
+			key.WithKeys("0"),
+			key.WithHelp("0", "reset"),
+		),
 	}
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Quit, k.Refresh, k.Interval}
+	return []key.Binding{k.Quit, k.Refresh, k.Interval, k.Reset}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.Quit, k.Refresh, k.Interval},
+		{k.Quit, k.Refresh, k.Interval, k.Reset},
 	}
 }

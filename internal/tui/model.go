@@ -70,6 +70,12 @@ type Model struct {
 
 	// Layout geometry (written by View, read by drag handlers in Phase 2)
 	layout *layoutInfo
+
+	// Layout customization (panel/bar ordering, hidden bars)
+	layoutState layoutState
+
+	// Drag state machine
+	drag dragState
 }
 
 // layoutInfo tracks screen-space geometry of UI elements for hit-testing.
@@ -77,6 +83,8 @@ type layoutInfo struct {
 	claudePanel image.Rectangle
 	codexPanel  image.Rectangle
 	statusBar   image.Rectangle
+	claudeBars  []barGeom
+	codexBars   []barGeom
 }
 
 // NewModel creates a new headroom TUI model.
@@ -134,6 +142,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.bgGrid = generateBgGrid(m.width, m.height)
 		m.bgWidth = m.width
 		m.bgHeight = m.height
+		m.drag = dragState{} // cancel any in-progress drag on resize
 		return m, nil
 
 	case tea.FocusMsg:
@@ -158,6 +167,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.fetchTime.IsZero() {
 			t := msg.fetchTime
 			m.lastFetchTime = &t
+		}
+		// Initialize or sync layout state with current category keys.
+		var claudeKeys, codexKeys []string
+		for _, c := range m.categories {
+			if len(c.Key) > 6 && c.Key[:6] == "codex_" {
+				codexKeys = append(codexKeys, c.Key)
+			} else {
+				claudeKeys = append(claudeKeys, c.Key)
+			}
+		}
+		if len(m.layoutState.panelOrder) == 0 {
+			m.layoutState = defaultLayoutState(claudeKeys, codexKeys)
+		} else {
+			m.layoutState.syncCategories(claudeKeys, codexKeys)
 		}
 		return m, nil
 
@@ -206,6 +229,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sleepFrame++
 		return m, plasmaTickCmd()
 
+	case tea.MouseClickMsg:
+		if m.state == stateRunning && m.inputMode == inputNone && m.width >= 40 && m.height >= 12 {
+			return m.handleMouseDown(msg)
+		}
+		return m, nil
+
+	case tea.MouseMotionMsg:
+		if m.drag.phase != dragIdle {
+			return m.handleMouseMove(msg)
+		}
+		return m, nil
+
+	case tea.MouseReleaseMsg:
+		if m.drag.phase != dragIdle {
+			return m.handleMouseUp(msg)
+		}
+		return m, nil
+
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 	}
@@ -245,6 +286,17 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Interval):
 		m.inputMode = inputInterval
 		m.inputBuf = ""
+		return m, nil
+	case key.Matches(msg, m.keys.Reset):
+		var claudeKeys, codexKeys []string
+		for _, c := range m.categories {
+			if len(c.Key) > 6 && c.Key[:6] == "codex_" {
+				codexKeys = append(codexKeys, c.Key)
+			} else {
+				claudeKeys = append(claudeKeys, c.Key)
+			}
+		}
+		m.layoutState = defaultLayoutState(claudeKeys, codexKeys)
 		return m, nil
 	}
 
