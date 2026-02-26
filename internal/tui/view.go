@@ -170,7 +170,7 @@ func renderPanel(cats []parse.Category, extra *parse.ExtraUsage, width int, maxH
 	if extra != nil {
 		cost := 1 // bar
 		if showTitles {
-			cost += 2 // title + dollar subtitle
+			cost++ // title
 		}
 		if showSpacing {
 			cost++
@@ -208,11 +208,8 @@ func renderPanel(cats []parse.Category, extra *parse.ExtraUsage, width int, maxH
 			limitDollars := extra.MonthlyLimit / 100
 			usedDollars := extra.UsedCredits / 100
 			name := "Extra usage (monthly)"
-			resetStr := parse.FormatMonthReset()
-			lines = append(lines, alignRow(boldStyle.Render(name), dimStyle.Render(resetStr), width))
-
-			usageStr := fmt.Sprintf("$%.2f / $%.2f", usedDollars, limitDollars)
-			lines = append(lines, dimStyle.Render(usageStr))
+			rightStr := fmt.Sprintf("$%.2f / $%.2f  %s", usedDollars, limitDollars, parse.FormatMonthReset())
+			lines = append(lines, alignRow(boldStyle.Render(name), dimStyle.Render(rightStr), width))
 		}
 		lines = append(lines, RenderBar(width, extra.Utilization, parse.CalcMonthGlide()))
 	}
