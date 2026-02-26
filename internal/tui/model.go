@@ -3,7 +3,6 @@ package tui
 import (
 	"time"
 
-	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -59,7 +58,6 @@ type Model struct {
 
 	// Help
 	keys keyMap
-	help help.Model
 
 	// Debug
 	debugSleep bool
@@ -72,20 +70,13 @@ func NewModel(debugSleep bool) Model {
 		s = stateSleeping
 	}
 
-	keys := newKeyMap()
-	h := help.New()
-	h.Styles.ShortKey = helpKeyStyle
-	h.Styles.ShortDesc = helpDescStyle
-	h.Styles.ShortSeparator = helpSepStyle
-
 	return Model{
 		refreshFocused: parse.RefreshFocused,
 		hasFocus:       true,
 		lastFocusTime:  time.Now(),
 		state:          s,
 		debugSleep:     debugSleep,
-		keys:           keys,
-		help:           h,
+		keys:           newKeyMap(),
 	}
 }
 
@@ -123,7 +114,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.help.Width = msg.Width
 		return m, nil
 
 	case tea.FocusMsg:

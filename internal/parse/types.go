@@ -9,16 +9,18 @@ const (
 
 // WindowDurations maps API keys to window durations in seconds.
 var WindowDurations = map[string]int{
-	"five_hour":      WindowFiveHour,
-	"seven_day":      WindowSevenDay,
-	"seven_day_opus": WindowSevenDayOpus,
+	"five_hour":        WindowFiveHour,
+	"seven_day":        WindowSevenDay,
+	"seven_day_opus":   WindowSevenDayOpus,
+	"seven_day_sonnet": WindowSevenDay,
 }
 
 // DisplayNames maps API keys to human-readable names.
 var DisplayNames = map[string]string{
-	"five_hour":      "Session",
-	"seven_day":      "Weekly",
-	"seven_day_opus": "Opus (weekly)",
+	"five_hour":        "Session",
+	"seven_day":        "Weekly",
+	"seven_day_opus":   "Opus (weekly)",
+	"seven_day_sonnet": "Sonnet (weekly)",
 }
 
 // CategoryOrder is the preferred display order for categories.

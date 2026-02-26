@@ -113,28 +113,41 @@ func (m Model) View() string {
 }
 
 // renderStatusBar builds the full-width status bar displayed at the bottom of
-// the screen.
+// the screen. Every character uses an explicit background so there are no
+// unstyled gaps between styled segments.
 func (m Model) renderStatusBar() string {
 	brand := statusBrandStyle.Render(" headroom ")
 
 	var right string
 	if m.inputMode == inputInterval {
-		right = boldStyle.Render("Interval (seconds): ") + normalStyle.Render(m.inputBuf+"_")
+		right = helpKeyStyle.Render("Interval (seconds): ") + helpDescStyle.Render(m.inputBuf+"_ ")
 	} else {
 		updated := parse.FormatUpdatedAgo(m.lastFetchTime)
-		helpView := m.help.View(m.keys)
-		right = dimStyle.Render(updated) + "  " + helpView
+		right = helpDescStyle.Render(updated+"  ") + renderHelp(m.keys) + helpDescStyle.Render(" ")
 	}
 
 	brandWidth := lipgloss.Width(brand)
-	rightOnBg := statusBarStyle.Render(right + " ")
-	gapWidth := m.width - brandWidth - lipgloss.Width(rightOnBg)
+	rightWidth := lipgloss.Width(right)
+	gapWidth := m.width - brandWidth - rightWidth
 	if gapWidth < 0 {
 		gapWidth = 0
 	}
 	gap := statusBarStyle.Render(strings.Repeat(" ", gapWidth))
 
-	return brand + gap + rightOnBg
+	return brand + gap + right
+}
+
+// renderHelp builds the key-binding help text with every character (including
+// spaces) inside a styled Render call so the status bar background is
+// continuous. This replaces bubbles/help.View which leaves unstyled gaps.
+func renderHelp(k keyMap) string {
+	bindings := k.ShortHelp()
+	var parts []string
+	for _, b := range bindings {
+		h := b.Help()
+		parts = append(parts, helpKeyStyle.Render(h.Key)+helpDescStyle.Render(" "+h.Desc))
+	}
+	return strings.Join(parts, helpSepStyle.Render(" • "))
 }
 
 // renderPanel builds the content string for a single bordered panel. It
