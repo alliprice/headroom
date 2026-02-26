@@ -8,7 +8,7 @@ import (
 
 	colorful "github.com/lucasb-eyer/go-colorful"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // gradientRGB is a 256-entry lookup table of RGB values interpolated through

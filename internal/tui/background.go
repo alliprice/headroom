@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"math"
 	"strings"
-
-	"github.com/charmbracelet/lipgloss"
 )
 
 // katakana holds the half-width katakana character set (U+FF66–U+FF9D, 56 chars).
@@ -109,152 +107,32 @@ func generateBgGrid(w, h int) []bgCell {
 	return grid
 }
 
-// renderBgSegment renders a horizontal run of background cells starting at
-// column xStart with the given count, from row y of the grid. ANSI color
-// escape sequences are only emitted when the gray value changes. Returns an
-// empty string when count <= 0.
-func renderBgSegment(grid []bgCell, gridW, y, xStart, count int) string {
-	if count <= 0 {
-		return ""
-	}
-
+// renderBackground renders the full w×h background grid as a single ANSI
+// string suitable for use as a Canvas layer. Each cell uses a grayscale
+// foreground color, with escapes only emitted when the color changes.
+func renderBackground(grid []bgCell, w, h int) string {
 	var buf strings.Builder
-	buf.Grow(count * 16)
+	buf.Grow(w * h * 16)
 
 	var prevGray uint8
 	prevSet := false
 
-	for i := 0; i < count; i++ {
-		x := xStart + i
-		// Wrap x into the grid width so the background tiles horizontally.
-		gx := x % gridW
-		if gx < 0 {
-			gx += gridW
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			cell := grid[y*w+x]
+			if !prevSet || cell.gray != prevGray {
+				fmt.Fprintf(&buf, "\x1b[38;2;%d;%d;%dm", cell.gray, cell.gray, cell.gray)
+				prevGray = cell.gray
+				prevSet = true
+			}
+			buf.WriteRune(cell.ch)
 		}
-		// Wrap y into the grid height so the background tiles vertically.
-		gy := y % len(grid) // fallback guard
-		if gridW > 0 {
-			gy = (y % (len(grid) / gridW))
+		buf.WriteString("\x1b[0m")
+		prevSet = false
+		if y < h-1 {
+			buf.WriteByte('\n')
 		}
-		if gy < 0 {
-			gy += len(grid) / gridW
-		}
-
-		cell := grid[gy*gridW+gx]
-
-		if !prevSet || cell.gray != prevGray {
-			g := cell.gray
-			fmt.Fprintf(&buf, "\x1b[38;2;%d;%d;%dm", g, g, g)
-			prevGray = cell.gray
-			prevSet = true
-		}
-
-		buf.WriteRune(cell.ch)
 	}
 
-	buf.WriteString("\x1b[0m")
 	return buf.String()
-}
-
-// compositeWithBackground composites the panels, error line, and status bar
-// over the pre-computed background grid.
-func compositeWithBackground(panelsStr, errorLine, statusBar string, grid []bgCell, gridW, gridH, screenW, screenH int) string {
-	panelLines := strings.Split(panelsStr, "\n")
-
-	// Find the visual width of the panels from the first non-empty line.
-	panelVisualWidth := 0
-	for _, line := range panelLines {
-		if strings.TrimSpace(line) != "" {
-			w := lipgloss.Width(line)
-			if w > 0 {
-				panelVisualWidth = w
-				break
-			}
-		}
-	}
-
-	leftMargin := 0
-	if panelVisualWidth > 0 && screenW > panelVisualWidth {
-		leftMargin = (screenW - panelVisualWidth) / 2
-	}
-
-	var out strings.Builder
-	out.Grow(screenW * screenH * 24)
-
-	// Determine how many rows the error section consumes.
-	errorRows := 0
-	if errorLine != "" {
-		errorRows = 2 // one for the error text, one blank
-	}
-
-	// Total content rows (everything except the status bar).
-	contentRows := screenH - 1
-	if contentRows < 0 {
-		contentRows = 0
-	}
-
-	// Panel lines start after the error rows. Center the panels vertically in
-	// the remaining space.
-	remainingRows := contentRows - errorRows
-	panelStartRow := errorRows
-	if len(panelLines) < remainingRows {
-		panelStartRow = errorRows + (remainingRows-len(panelLines))/2
-	}
-	panelEndRow := panelStartRow + len(panelLines) - 1
-
-	panelLineIdx := 0
-
-	for y := 0; y < contentRows; y++ {
-		if y > 0 {
-			out.WriteByte('\n')
-		}
-
-		// Error rows.
-		if errorRows > 0 {
-			if y == 0 {
-				out.WriteString(errorLine)
-				continue
-			}
-			if y == 1 {
-				// Blank separator row — full background.
-				out.WriteString(renderBgSegment(grid, gridW, y, 0, screenW))
-				continue
-			}
-		}
-
-		// Panel rows.
-		if y >= panelStartRow && y <= panelEndRow {
-			lineIdx := panelLineIdx
-			panelLineIdx++
-
-			if lineIdx < len(panelLines) {
-				line := panelLines[lineIdx]
-				if strings.TrimSpace(line) != "" && lipgloss.Width(line) > 0 {
-					// Composite: left bg + panel + right bg.
-					left := renderBgSegment(grid, gridW, y, 0, leftMargin)
-					rightStart := leftMargin + panelVisualWidth
-					rightCount := screenW - rightStart
-					right := renderBgSegment(grid, gridW, y, rightStart, rightCount)
-					out.WriteString(left)
-					out.WriteString(line)
-					out.WriteString(right)
-					continue
-				}
-			}
-		} else if y > panelEndRow {
-			// Keep panelLineIdx advancing so we don't lose sync.
-			// (Only matters if we re-enter panel range, which we don't.)
-		}
-
-		// Default: full-width background.
-		out.WriteString(renderBgSegment(grid, gridW, y, 0, screenW))
-	}
-
-	// Final row: status bar.
-	if screenH > 0 {
-		out.WriteByte('\n')
-		out.WriteString(statusBar)
-	}
-
-	return out.String()
 }

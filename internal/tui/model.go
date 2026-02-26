@@ -1,10 +1,11 @@
 package tui
 
 import (
+	"image"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/alliprice/headroom/internal/fetch"
 	"github.com/alliprice/headroom/internal/parse"
@@ -66,6 +67,16 @@ type Model struct {
 	bgGrid   []bgCell
 	bgWidth  int
 	bgHeight int
+
+	// Layout geometry (written by View, read by drag handlers in Phase 2)
+	layout *layoutInfo
+}
+
+// layoutInfo tracks screen-space geometry of UI elements for hit-testing.
+type layoutInfo struct {
+	claudePanel image.Rectangle
+	codexPanel  image.Rectangle
+	statusBar   image.Rectangle
 }
 
 // NewModel creates a new headroom TUI model.
@@ -82,6 +93,7 @@ func NewModel(debugSleep bool) Model {
 		state:          s,
 		debugSleep:     debugSleep,
 		keys:           newKeyMap(),
+		layout:         &layoutInfo{},
 	}
 }
 
@@ -89,13 +101,13 @@ func NewModel(debugSleep bool) Model {
 func (m Model) Init() tea.Cmd {
 	if m.debugSleep {
 		// Start in sleep mode - no initial fetch (state already set in NewModel)
-		return tea.Batch(plasmaTickCmd(), tea.WindowSize())
+		return tea.Batch(plasmaTickCmd(), tea.RequestWindowSize)
 	}
 
 	// Probe for Codex availability
 	return tea.Batch(
 		m.probeCodex(),
-		tea.WindowSize(),
+		tea.RequestWindowSize,
 	)
 }
 
@@ -194,7 +206,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sleepFrame++
 		return m, plasmaTickCmd()
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 	}
 
@@ -202,7 +214,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // handleKey processes keyboard input.
-func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// In input mode (interval prompt)
 	if m.inputMode == inputInterval {
 		return m.handleIntervalInput(msg)
@@ -240,7 +252,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // handleIntervalInput processes keyboard input while in interval-prompt mode.
-func (m Model) handleIntervalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleIntervalInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "escape":
 		m.inputMode = inputNone

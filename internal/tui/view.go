@@ -4,22 +4,31 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/alliprice/headroom/internal/parse"
 )
 
 // View implements tea.Model. It renders the complete TUI screen.
-func (m Model) View() string {
-	// Sleep mode
+func (m Model) View() tea.View {
+	var content string
+
 	if m.state == stateSleeping {
-		return RenderPlasma(m.width, m.height, m.sleepFrame)
+		content = RenderPlasma(m.width, m.height, m.sleepFrame)
+		v := tea.NewView(content)
+		v.AltScreen = true
+		v.ReportFocus = true
+		return v
 	}
 
 	w := m.width
 	h := m.height
 	if h < 1 || w < 5 {
-		return ""
+		v := tea.NewView("")
+		v.AltScreen = true
+		v.ReportFocus = true
+		return v
 	}
 
 	// Split categories into Claude vs Codex groups.
@@ -44,15 +53,23 @@ func (m Model) View() string {
 	// Empty state.
 	if len(m.categories) == 0 && m.errorMsg == "" {
 		body := normalStyle.Render("No usage data available")
-		return lipgloss.JoinVertical(lipgloss.Left,
+		content = lipgloss.JoinVertical(lipgloss.Left,
 			lipgloss.PlaceVertical(h-1, lipgloss.Center, body),
 			statusBar,
 		)
+		v := tea.NewView(content)
+		v.AltScreen = true
+		v.ReportFocus = true
+		return v
 	}
 
 	// Small terminal fallback — no borders.
 	if w < 40 || h < 12 {
-		return m.renderFlat(claudeCats, codexCats, statusBar, errorLine)
+		content = m.renderFlat(claudeCats, codexCats, statusBar, errorLine)
+		v := tea.NewView(content)
+		v.AltScreen = true
+		v.ReportFocus = true
+		return v
 	}
 
 	// Calculate available height for the panel area.
@@ -66,16 +83,13 @@ func (m Model) View() string {
 	hFrame := panelStyle.GetHorizontalFrameSize()
 	vFrame := panelStyle.GetVerticalFrameSize()
 
-	// lipgloss Width() includes padding but NOT borders, so subtract
-	// the border width from our target to get the correct Width() arg.
 	panelWidth := w - panelMargin*2
 	borderW := panelStyle.GetBorderLeftSize() + panelStyle.GetBorderRightSize()
 	panelContentWidth := panelWidth - hFrame
-	widthArg := panelWidth - borderW // Width() excludes borders
+	widthArg := panelWidth - borderW
 
 	var panels string
 	if len(codexCats) > 0 {
-		// Stacked: split vertical space evenly between two panels, with 1-row gap.
 		eachHeight := (panelAreaHeight - vFrame*2 - 1) / 2
 
 		claudeContent := renderPanel(claudeCats, m.extra, panelContentWidth, eachHeight)
@@ -92,28 +106,78 @@ func (m Model) View() string {
 		panels = panelStyle.Width(widthArg).Render(claudeContent)
 		panels = embedBorderTitle(panels, "Claude", panelWidth)
 	}
-	// Composite panels onto the background grid.
+
+	// Canvas compositing with background.
 	if len(m.bgGrid) > 0 {
-		return compositeWithBackground(panels, errorLine, statusBar, m.bgGrid, m.bgWidth, m.bgHeight, w, h)
+		bgContent := renderBackground(m.bgGrid, w, h)
+
+		// Compute panel position for centering.
+		panelVisualWidth := 0
+		for _, line := range strings.Split(panels, "\n") {
+			if strings.TrimSpace(line) != "" {
+				pw := lipgloss.Width(line)
+				if pw > 0 {
+					panelVisualWidth = pw
+					break
+				}
+			}
+		}
+		panelX := 0
+		if panelVisualWidth > 0 && w > panelVisualWidth {
+			panelX = (w - panelVisualWidth) / 2
+		}
+
+		// Vertical centering of panels in content area.
+		panelLines := strings.Split(panels, "\n")
+		errorRows := 0
+		if errorLine != "" {
+			errorRows = 2
+		}
+		contentRows := h - 1
+		remainingRows := contentRows - errorRows
+		panelY := errorRows
+		if len(panelLines) < remainingRows {
+			panelY = errorRows + (remainingRows-len(panelLines))/2
+		}
+
+		// Build layers.
+		bgLayer := lipgloss.NewLayer(bgContent).Z(0).ID("bg")
+		panelLayer := lipgloss.NewLayer(panels).X(panelX).Y(panelY).Z(1).ID("panels")
+		statusLayer := lipgloss.NewLayer(statusBar).X(0).Y(h - 1).Z(2).ID("status")
+
+		canvas := lipgloss.NewCanvas(w, h)
+		canvas.Compose(bgLayer).Compose(panelLayer).Compose(statusLayer)
+
+		if errorLine != "" {
+			errorLayer := lipgloss.NewLayer(errorLine).X(0).Y(0).Z(2).ID("error")
+			canvas.Compose(errorLayer)
+		}
+
+		content = canvas.Render()
+	} else {
+		// Fallback: no background grid yet.
+		panels = lipgloss.PlaceHorizontal(w, lipgloss.Center, panels)
+
+		var sections []string
+		if errorLine != "" {
+			sections = append(sections, errorLine, "")
+		}
+		sections = append(sections, panels)
+
+		body := lipgloss.JoinVertical(lipgloss.Left, sections...)
+
+		bodyHeight := lipgloss.Height(body)
+		if bodyHeight < h-1 {
+			body += strings.Repeat("\n", h-1-bodyHeight)
+		}
+
+		content = body + "\n" + statusBar
 	}
 
-	// Fallback: no background grid yet.
-	panels = lipgloss.PlaceHorizontal(w, lipgloss.Center, panels)
-
-	var sections []string
-	if errorLine != "" {
-		sections = append(sections, errorLine, "")
-	}
-	sections = append(sections, panels)
-
-	body := lipgloss.JoinVertical(lipgloss.Left, sections...)
-
-	bodyHeight := lipgloss.Height(body)
-	if bodyHeight < h-1 {
-		body += strings.Repeat("\n", h-1-bodyHeight)
-	}
-
-	return body + "\n" + statusBar
+	v := tea.NewView(content)
+	v.AltScreen = true
+	v.ReportFocus = true
+	return v
 }
 
 // renderStatusBar builds the full-width status bar displayed at the bottom of

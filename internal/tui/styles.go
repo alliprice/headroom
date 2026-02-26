@@ -1,9 +1,9 @@
 package tui
 
-import "github.com/charmbracelet/lipgloss"
+import "charm.land/lipgloss/v2"
 
 // Color palette
-const (
+var (
 	colorBarEmpty = lipgloss.Color("#1E1028") // Dark purple-black
 	colorGlide    = lipgloss.Color("#F5F3FF") // Bright white - glide marker
 	colorBorder   = lipgloss.Color("#6D28D9") // Violet - panel border
