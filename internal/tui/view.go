@@ -68,38 +68,23 @@ func (m Model) View() string {
 	const borderRowOverhead = 4
 	const borderColOverhead = 6
 
-	sideBySide := w >= 80 && len(codexCats) > 0
+	panelContentWidth := w - borderColOverhead
 
 	var panels string
-	if sideBySide {
-		halfWidth := w / 2
-		panelContentWidth := halfWidth - borderColOverhead
+	if len(codexCats) > 0 {
+		// Stacked: split vertical space evenly between two panels.
+		eachHeight := (panelAreaHeight - borderRowOverhead*2) / 2
 
-		claudeContent := renderPanel("Claude", claudeCats, m.extra, panelContentWidth, panelAreaHeight-borderRowOverhead, m.lastFetchTime)
+		claudeContent := renderPanel("Claude", claudeCats, m.extra, panelContentWidth, eachHeight, m.lastFetchTime)
 		claudePanel := panelStyle.Width(panelContentWidth).Render(claudeContent)
 
-		codexContent := renderPanel("Codex", codexCats, nil, panelContentWidth, panelAreaHeight-borderRowOverhead, m.lastFetchTime)
+		codexContent := renderPanel("Codex", codexCats, nil, panelContentWidth, eachHeight, m.lastFetchTime)
 		codexPanel := panelStyle.Width(panelContentWidth).Render(codexContent)
 
-		panels = lipgloss.JoinHorizontal(lipgloss.Top, claudePanel, codexPanel)
+		panels = lipgloss.JoinVertical(lipgloss.Left, claudePanel, codexPanel)
 	} else {
-		panelContentWidth := w - borderColOverhead
-
-		if len(codexCats) > 0 {
-			// Split the vertical space evenly between the two stacked panels.
-			eachHeight := (panelAreaHeight - borderRowOverhead*2) / 2
-
-			claudeContent := renderPanel("Claude", claudeCats, m.extra, panelContentWidth, eachHeight, m.lastFetchTime)
-			claudePanel := panelStyle.Width(panelContentWidth).Render(claudeContent)
-
-			codexContent := renderPanel("Codex", codexCats, nil, panelContentWidth, eachHeight, m.lastFetchTime)
-			codexPanel := panelStyle.Width(panelContentWidth).Render(codexContent)
-
-			panels = lipgloss.JoinVertical(lipgloss.Left, claudePanel, codexPanel)
-		} else {
-			claudeContent := renderPanel("Claude", claudeCats, m.extra, panelContentWidth, panelAreaHeight-borderRowOverhead, m.lastFetchTime)
-			panels = panelStyle.Width(panelContentWidth).Render(claudeContent)
-		}
+		claudeContent := renderPanel("Claude", claudeCats, m.extra, panelContentWidth, panelAreaHeight-borderRowOverhead, m.lastFetchTime)
+		panels = panelStyle.Width(panelContentWidth).Render(claudeContent)
 	}
 
 	// Compose final view.

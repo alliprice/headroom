@@ -19,8 +19,8 @@ const (
 
 var (
 	// Bar styles (used by bar.go)
-	barFillStyle  = lipgloss.NewStyle().Foreground(colorBarFill)
-	barOverStyle  = lipgloss.NewStyle().Foreground(colorBarOver)
+	barFillStyle  = lipgloss.NewStyle().Foreground(colorBarFill).Background(colorBarEmpty)
+	barOverStyle  = lipgloss.NewStyle().Foreground(colorBarOver).Background(colorBarEmpty)
 	barEmptyStyle = lipgloss.NewStyle().Foreground(colorBarEmpty).Background(colorBarEmpty)
 	barGlideStyle = lipgloss.NewStyle().Foreground(colorGlide).Bold(true)
 
