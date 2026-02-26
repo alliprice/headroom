@@ -207,7 +207,7 @@ func renderPanel(cats []parse.Category, extra *parse.ExtraUsage, width int, maxH
 		if showTitles {
 			limitDollars := extra.MonthlyLimit / 100
 			usedDollars := extra.UsedCredits / 100
-			name := "Extra usage (monthly)"
+			name := "Extra usage"
 			rightStr := fmt.Sprintf("$%.2f / $%.2f  %s", usedDollars, limitDollars, parse.FormatMonthReset())
 			lines = append(lines, alignRow(boldStyle.Render(name), dimStyle.Render(rightStr), width))
 		}

@@ -20,9 +20,9 @@ func CombineCategories(claudeCats, codexCats []parse.Category) []parse.Category 
 			case "five_hour":
 				claudeCats[i].Name = "Claude session"
 			case "seven_day":
-				claudeCats[i].Name = "Claude weekly all"
+				claudeCats[i].Name = "Claude weekly"
 			case "seven_day_opus":
-				claudeCats[i].Name = "Claude weekly Opus"
+				claudeCats[i].Name = "Claude Opus (weekly)"
 			}
 		}
 		// Rename Codex categories to carry the "Codex" prefix.
@@ -108,7 +108,7 @@ func RunStatus() error {
 			status = "on track"
 		}
 
-		fmt.Printf("Extra usage (monthly): %.0f%% used ($%.2f / $%.2f) | %s\n",
+		fmt.Printf("Extra usage: %.0f%% used ($%.2f / $%.2f) | %s\n",
 			usagePct, usedDollars, limitDollars, status)
 	}
 

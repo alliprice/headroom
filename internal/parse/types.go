@@ -16,9 +16,9 @@ var WindowDurations = map[string]int{
 
 // DisplayNames maps API keys to human-readable names.
 var DisplayNames = map[string]string{
-	"five_hour":      "Current session",
-	"seven_day":      "All models (weekly)",
-	"seven_day_opus": "Opus only (weekly)",
+	"five_hour":      "Session",
+	"seven_day":      "Weekly",
+	"seven_day_opus": "Opus (weekly)",
 }
 
 // CategoryOrder is the preferred display order for categories.

@@ -44,7 +44,7 @@ var (
 				Padding(0, 1)
 
 	// Help styles (used by bubbles/help in status bar)
-	helpKeyStyle  = lipgloss.NewStyle().Foreground(colorNormal).Bold(true)
-	helpDescStyle = lipgloss.NewStyle().Foreground(colorDim)
-	helpSepStyle  = lipgloss.NewStyle().Foreground(colorDim)
+	helpKeyStyle  = lipgloss.NewStyle().Foreground(colorNormal).Bold(true).Background(colorStatusBg)
+	helpDescStyle = lipgloss.NewStyle().Foreground(colorDim).Background(colorStatusBg)
+	helpSepStyle  = lipgloss.NewStyle().Foreground(colorDim).Background(colorStatusBg)
 )

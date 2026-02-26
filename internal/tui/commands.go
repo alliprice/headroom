@@ -55,22 +55,12 @@ func doFetch(codexAvailable bool) tea.Cmd {
 
 		// Combine: rename when both present, order as claude core + codex + claude extras
 		if len(codexCats) > 0 {
-			for i := range claudeCats {
-				switch claudeCats[i].Key {
-				case "five_hour":
-					claudeCats[i].Name = "Claude session"
-				case "seven_day":
-					claudeCats[i].Name = "Claude weekly all"
-				case "seven_day_opus":
-					claudeCats[i].Name = "Claude weekly Opus"
-				}
-			}
 			for i := range codexCats {
 				switch codexCats[i].Key {
 				case "codex_primary":
-					codexCats[i].Name = "Codex session"
+					codexCats[i].Name = "Session"
 				case "codex_secondary":
-					codexCats[i].Name = "Codex weekly"
+					codexCats[i].Name = "Weekly"
 				}
 			}
 		}
