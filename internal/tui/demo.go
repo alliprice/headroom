@@ -222,8 +222,10 @@ func (m Model) demoBarTrashStep() (Model, tea.Cmd) {
 		return m, demoTickCmd()
 	}
 
-	// Done: hide the bar.
-	m.layoutState.hidden[m.drag.barKey] = true
+	// Done: hide the bar using a command so it's undoable.
+	cmd := hideBarCmd{barKey: m.drag.barKey}
+	cmd.Execute(&m.layoutState)
+	m.pushCmd(cmd)
 	m.drag = dragState{}
 	m.demoStep = demoWait4
 	m.demoFrame = 0

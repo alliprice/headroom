@@ -91,6 +91,23 @@ func (ls *layoutState) hideAllBarsInPanel(panelID string) {
 	}
 }
 
+// clone returns a deep copy of the layout state.
+func (ls layoutState) clone() layoutState {
+	po := make([]string, len(ls.panelOrder))
+	copy(po, ls.panelOrder)
+	co := make(map[string][]string, len(ls.catOrder))
+	for k, v := range ls.catOrder {
+		vc := make([]string, len(v))
+		copy(vc, v)
+		co[k] = vc
+	}
+	h := make(map[string]bool, len(ls.hidden))
+	for k, v := range ls.hidden {
+		h[k] = v
+	}
+	return layoutState{panelOrder: po, catOrder: co, hidden: h}
+}
+
 // trashZoneRect returns the screen-space rectangle for the trash drop zone
 // positioned in the bottom-right corner of the screen (above the status bar).
 func trashZoneRect(w, h int) image.Rectangle {
