@@ -16,17 +16,26 @@ import (
 // If nil, bars are rendered at their real values with full glide opacity.
 type barAnimFunc func(key string, usage, glide float64) (animUsage, animGlide, glideOpacity float64)
 
+// windowTitle is the terminal window title in vaporwave full-width characters.
+const windowTitle = "ｈｅａｄｒｏｏｍ"
+
+// newView creates a tea.View with the standard settings for headroom.
+func newView(content string) tea.View {
+	v := tea.NewView(content)
+	v.AltScreen = true
+	v.ReportFocus = true
+	v.MouseMode = tea.MouseModeCellMotion
+	v.WindowTitle = windowTitle
+	return v
+}
+
 // View implements tea.Model. It renders the complete TUI screen.
 func (m Model) View() tea.View {
 	var content string
 
 	if m.state == stateSleeping {
 		content = RenderPlasma(m.width, m.height, m.sleepFrame, "press any key to wake")
-		v := tea.NewView(content)
-		v.AltScreen = true
-		v.ReportFocus = true
-		v.MouseMode = tea.MouseModeCellMotion
-		return v
+		return newView(content)
 	}
 
 	if m.state == stateLoading {
@@ -37,21 +46,13 @@ func (m Model) View() tea.View {
 			fadeT = float64(m.sleepFrame) / 20.0
 		}
 		content = RenderLoadingFrame(m.bgGrid, m.width, m.height, m.sleepFrame, fadeT)
-		v := tea.NewView(content)
-		v.AltScreen = true
-		v.ReportFocus = true
-		v.MouseMode = tea.MouseModeCellMotion
-		return v
+		return newView(content)
 	}
 
 	w := m.width
 	h := m.height
 	if h < 1 || w < 5 {
-		v := tea.NewView("")
-		v.AltScreen = true
-		v.ReportFocus = true
-		v.MouseMode = tea.MouseModeCellMotion
-		return v
+		return newView("")
 	}
 
 	// Build category lookup map.
@@ -93,21 +94,13 @@ func (m Model) View() tea.View {
 			lipgloss.PlaceVertical(h-1, lipgloss.Center, body),
 			statusBar,
 		)
-		v := tea.NewView(content)
-		v.AltScreen = true
-		v.ReportFocus = true
-		v.MouseMode = tea.MouseModeCellMotion
-		return v
+		return newView(content)
 	}
 
 	// Small terminal fallback — no borders.
 	if w < 40 || h < 12 {
 		content = m.renderFlat(claudeCats, codexCats, statusBar, errorLine)
-		v := tea.NewView(content)
-		v.AltScreen = true
-		v.ReportFocus = true
-		v.MouseMode = tea.MouseModeCellMotion
-		return v
+		return newView(content)
 	}
 
 	// Calculate available height for the panel area.
@@ -377,11 +370,7 @@ func (m Model) View() tea.View {
 		content = body + "\n" + statusBar
 	}
 
-	v := tea.NewView(content)
-	v.AltScreen = true
-	v.ReportFocus = true
-	v.MouseMode = tea.MouseModeCellMotion
-	return v
+	return newView(content)
 }
 
 // renderStatusBar builds the full-width status bar displayed at the bottom of
