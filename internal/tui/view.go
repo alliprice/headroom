@@ -420,97 +420,6 @@ func renderHelp(k keyMap) string {
 	return strings.Join(parts, helpSepStyle.Render(" • "))
 }
 
-// renderPanel builds the content string for a single bordered panel. It
-// applies progressive compaction so the content fits within maxHeight rows.
-// width is the inner content width (border and padding already subtracted).
-// The panel title (e.g. "Claude") is rendered in the border by the caller.
-// animFn, if non-nil, overrides bar values for the sweep animation.
-func renderPanel(cats []parse.Category, extra *parse.ExtraUsage, width int, maxHeight int, animFn barAnimFunc) string {
-	n := len(cats)
-	if n == 0 {
-		return normalStyle.Render("No data")
-	}
-
-	// Progressive compaction.
-	// Base: one bar per category (n lines).
-	used := n
-
-	// Step 0: add title lines for all categories (+n lines).
-	showTitles := false
-	if used+n <= maxHeight {
-		showTitles = true
-		used += n
-	}
-
-	// Step 1: spacing between categories (+n-1 lines).
-	showSpacing := false
-	if showTitles && used+max(n-1, 0) <= maxHeight {
-		showSpacing = true
-		used += max(n-1, 0)
-	}
-
-	// Extra usage (shown when space allows).
-	showExtra := false
-	if extra != nil {
-		cost := 1 // bar
-		if showTitles {
-			cost++ // title
-		}
-		if showSpacing {
-			cost++
-		}
-		if used+cost <= maxHeight {
-			showExtra = true
-		}
-	}
-
-	// Build the content lines.
-	var lines []string
-
-	for idx, cat := range cats {
-		usage := cat.Utilization
-		glide := parse.CalcGlideSlope(cat.ResetsAt, cat.WindowSeconds)
-
-		if showTitles {
-			resetStr := parse.FormatResetTime(cat.ResetsAt)
-			lines = append(lines, alignRow(boldStyle.Render(cat.Name), dimStyle.Render(resetStr), width))
-		}
-
-		animUsage, animGlide, opacity := usage, glide, 1.0
-		if animFn != nil {
-			animUsage, animGlide, opacity = animFn(cat.Key, usage, glide)
-		}
-		lines = append(lines, RenderBar(width, animUsage, animGlide, opacity))
-
-		if showSpacing && idx < n-1 {
-			lines = append(lines, "")
-		}
-	}
-
-	// Extra usage (monthly billing).
-	if showExtra {
-		if showSpacing {
-			lines = append(lines, "")
-		}
-		extraUsage := extra.Utilization
-		extraGlide := parse.CalcMonthGlide()
-		extraOpacity := 1.0
-		if animFn != nil {
-			extraUsage, extraGlide, extraOpacity = animFn("extra_usage", extraUsage, extraGlide)
-		}
-		if showTitles {
-			limitDollars := extra.MonthlyLimit / 100
-			usedDollars := extra.UsedCredits / 100
-			name := "Extra usage"
-			rightStr := fmt.Sprintf("$%.2f / $%.2f  %s", usedDollars, limitDollars, parse.FormatMonthReset())
-			lines = append(lines, alignRow(boldStyle.Render(name), dimStyle.Render(rightStr), width))
-		}
-		lines = append(lines, RenderBar(width, extraUsage, extraGlide, extraOpacity))
-	}
-
-	return strings.Join(lines, "\n")
-}
-
 // alignRow places left on the left and right on the right within the given
 // width, filling the gap with spaces. Both left and right should already be
 // styled (the gap uses no styling).
@@ -592,29 +501,34 @@ type barLineInfo struct {
 	pinned bool // true = absorbs clicks but can't be dragged
 }
 
-// renderPanelWithGeom is like renderPanel but also returns the relative line
-// index of each bar within the panel content area. animFn, if non-nil,
-// overrides bar values for the sweep animation.
-func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width int, maxHeight int, animFn barAnimFunc) (string, []barLineInfo) {
-	n := len(cats)
-	if n == 0 {
-		return normalStyle.Render("No data"), nil
+// panelCompaction holds the progressive compaction decisions for a panel.
+// It is a pure value computed from (numCats, hasExtra, maxHeight).
+type panelCompaction struct {
+	showTitles  bool
+	showSpacing bool
+	showExtra   bool
+}
+
+// computeCompaction determines which visual elements fit within maxHeight rows.
+// numCats is the number of category bars; hasExtra indicates whether an extra
+// usage bar is available; maxHeight is the maximum number of content lines.
+func computeCompaction(numCats int, hasExtra bool, maxHeight int) panelCompaction {
+	used := numCats
+
+	showTitles := false
+	if used+numCats <= maxHeight {
+		showTitles = true
+		used += numCats
 	}
 
-	// Progressive compaction (same as renderPanel).
-	used := n
-	showTitles := false
-	if used+n <= maxHeight {
-		showTitles = true
-		used += n
-	}
 	showSpacing := false
-	if showTitles && used+max(n-1, 0) <= maxHeight {
+	if showTitles && used+max(numCats-1, 0) <= maxHeight {
 		showSpacing = true
-		used += max(n-1, 0)
+		used += max(numCats-1, 0)
 	}
+
 	showExtra := false
-	if extra != nil {
+	if hasExtra {
 		cost := 1
 		if showTitles {
 			cost++
@@ -627,6 +541,20 @@ func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width i
 		}
 	}
 
+	return panelCompaction{showTitles, showSpacing, showExtra}
+}
+
+// renderPanelWithGeom builds the content string for a single bordered panel
+// and returns the relative line positions of each bar for hit-testing.
+// animFn, if non-nil, overrides bar values for the sweep animation.
+func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width int, maxHeight int, animFn barAnimFunc) (string, []barLineInfo) {
+	n := len(cats)
+	if n == 0 {
+		return normalStyle.Render("No data"), nil
+	}
+
+	c := computeCompaction(n, extra != nil, maxHeight)
+
 	var lines []string
 	var barInfos []barLineInfo
 	lineIdx := 0
@@ -636,7 +564,7 @@ func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width i
 		glide := parse.CalcGlideSlope(cat.ResetsAt, cat.WindowSeconds)
 
 		catStartY := lineIdx
-		if showTitles {
+		if c.showTitles {
 			resetStr := parse.FormatResetTime(cat.ResetsAt)
 			lines = append(lines, alignRow(boldStyle.Render(cat.Name), dimStyle.Render(resetStr), width))
 			lineIdx++
@@ -650,19 +578,19 @@ func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width i
 		lineIdx++
 		barInfos = append(barInfos, barLineInfo{key: cat.Key, relY: catStartY, height: lineIdx - catStartY})
 
-		if showSpacing && idx < n-1 {
+		if c.showSpacing && idx < n-1 {
 			lines = append(lines, "")
 			lineIdx++
 		}
 	}
 
-	if showExtra {
-		if showSpacing {
+	if c.showExtra {
+		if c.showSpacing {
 			lines = append(lines, "")
 			lineIdx++
 		}
 		extraStartY := lineIdx
-		if showTitles {
+		if c.showTitles {
 			limitDollars := extra.MonthlyLimit / 100
 			usedDollars := extra.UsedCredits / 100
 			name := "Extra usage"
