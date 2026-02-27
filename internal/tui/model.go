@@ -140,6 +140,11 @@ func (m Model) Init() tea.Cmd {
 		return tea.Batch(plasmaTickCmd(), tea.RequestWindowSize)
 	}
 
+	if m.demoMode {
+		m.codexAvailable = true
+		return tea.Batch(mockFetch(), tea.RequestWindowSize, plasmaTickCmd())
+	}
+
 	// Probe for Codex availability; start plasma tick for loading animation
 	return tea.Batch(
 		m.probeCodex(),

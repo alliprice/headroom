@@ -59,6 +59,9 @@ func (m Model) handleMouseDown(msg tea.MouseClickMsg) (Model, tea.Cmd) {
 	// Check Claude categories.
 	for _, bg := range m.layout.claudeBars {
 		if image.Pt(x, y).In(bg.bounds) {
+			if bg.pinned {
+				return m, nil // absorb click, no drag
+			}
 			m.drag = dragState{
 				phase:      dragPending,
 				target:     dragTargetBar,
@@ -73,6 +76,9 @@ func (m Model) handleMouseDown(msg tea.MouseClickMsg) (Model, tea.Cmd) {
 	// Check Codex categories.
 	for _, bg := range m.layout.codexBars {
 		if image.Pt(x, y).In(bg.bounds) {
+			if bg.pinned {
+				return m, nil // absorb click, no drag
+			}
 			m.drag = dragState{
 				phase:      dragPending,
 				target:     dragTargetBar,

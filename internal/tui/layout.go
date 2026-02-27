@@ -15,6 +15,7 @@ type layoutState struct {
 type barGeom struct {
 	key    string
 	bounds image.Rectangle
+	pinned bool // true = absorbs clicks but can't be dragged
 }
 
 // defaultLayoutState returns a layoutState with the given category keys in

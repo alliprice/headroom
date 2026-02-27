@@ -162,7 +162,11 @@ func (m Model) View() tea.View {
 		switch pid {
 		case "claude":
 			if len(claudeCats) > 0 {
-				panelDefs = append(panelDefs, panelDef{"Claude", claudeCats, m.extra})
+				extra := m.extra
+				if m.layoutState.hidden["extra_usage"] {
+					extra = nil
+				}
+				panelDefs = append(panelDefs, panelDef{"Claude", claudeCats, extra})
 			}
 		case "codex":
 			if len(codexCats) > 0 {
@@ -274,7 +278,7 @@ func (m Model) View() tea.View {
 						for _, bi := range panelBarInfos[pi] {
 							absY := pyOff + contentOffY + bi.relY
 							r := image.Rect(contentOffX, absY, contentOffX+panelContentWidth, absY+bi.height)
-							bg := barGeom{key: bi.key, bounds: r}
+							bg := barGeom{key: bi.key, bounds: r, pinned: bi.pinned}
 							if pd.name == "Claude" {
 								m.layout.claudeBars = append(m.layout.claudeBars, bg)
 							} else {
@@ -306,7 +310,7 @@ func (m Model) View() tea.View {
 					for _, bi := range panelBarInfos[0] {
 						absY := panelY + contentOffY + bi.relY
 						r := image.Rect(contentOffX, absY, contentOffX+panelContentWidth, absY+bi.height)
-						bg := barGeom{key: bi.key, bounds: r}
+						bg := barGeom{key: bi.key, bounds: r, pinned: bi.pinned}
 						if pd.name == "Claude" {
 							m.layout.claudeBars = append(m.layout.claudeBars, bg)
 						} else {
@@ -590,8 +594,9 @@ func truncate(s string, maxLen int) string {
 // corresponds to a category (title line + bar line), for hit-testing.
 type barLineInfo struct {
 	key    string
-	relY   int // first line of this category region (title or bar)
-	height int // number of lines this region spans
+	relY   int  // first line of this category region (title or bar)
+	height int  // number of lines this region spans
+	pinned bool // true = absorbs clicks but can't be dragged
 }
 
 // renderPanelWithGeom is like renderPanel but also returns the relative line
@@ -663,6 +668,7 @@ func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width i
 			lines = append(lines, "")
 			lineIdx++
 		}
+		extraStartY := lineIdx
 		if showTitles {
 			limitDollars := extra.MonthlyLimit / 100
 			usedDollars := extra.UsedCredits / 100
@@ -679,7 +685,7 @@ func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width i
 		}
 		lines = append(lines, RenderBar(width, extraUsage, extraGlide, extraOpacity))
 		lineIdx++
-		// extra_usage is not added to barInfos — it's not draggable.
+		barInfos = append(barInfos, barLineInfo{key: "extra_usage", relY: extraStartY, height: lineIdx - extraStartY})
 	}
 
 	return strings.Join(lines, "\n"), barInfos
