@@ -47,4 +47,5 @@ var (
 	helpKeyStyle  = lipgloss.NewStyle().Foreground(colorNormal).Bold(true).Background(colorStatusBg)
 	helpDescStyle = lipgloss.NewStyle().Foreground(colorDim).Background(colorStatusBg)
 	helpSepStyle  = lipgloss.NewStyle().Foreground(colorDim).Background(colorStatusBg)
+
 )

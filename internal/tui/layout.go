@@ -72,6 +72,35 @@ func mergeOrder(existing, incoming []string) []string {
 	return existing
 }
 
+// hideAllBarsInPanel hides every bar that belongs to the given panel.
+func (ls *layoutState) hideAllBarsInPanel(panelID string) {
+	var order []string
+	switch panelID {
+	case "claude":
+		order = ls.claudeCatOrder
+	case "codex":
+		order = ls.codexCatOrder
+	default:
+		return
+	}
+	for _, k := range order {
+		ls.hidden[k] = true
+	}
+}
+
+// trashZoneRect returns the screen-space rectangle for the trash drop zone
+// positioned in the bottom-right corner of the screen (above the status bar).
+func trashZoneRect(w, h int) image.Rectangle {
+	const (
+		tzWidth  = 11 // columns (matches block-pixel art width)
+		tzHeight = 7  // rows
+		margin   = 2 // from screen edges
+	)
+	x1 := w - tzWidth - margin
+	y1 := h - 1 - tzHeight - margin // h-1 = status bar row
+	return image.Rect(x1, y1, x1+tzWidth, y1+tzHeight)
+}
+
 // moveToSlot reorders a full order slice by placing dragKey at the given
 // slot index among visible (non-hidden) entries. The slot is computed
 // externally by counting non-dragged items whose midpoint is above the

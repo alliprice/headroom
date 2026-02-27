@@ -82,6 +82,11 @@ type Model struct {
 	// Debug
 	debugSleep bool
 
+	// Demo mode (--demo flag)
+	demoMode  bool
+	demoStep  demoStep
+	demoFrame int
+
 	// Background
 	bgGrid   []bgCell
 	bgWidth  int
@@ -104,10 +109,11 @@ type layoutInfo struct {
 	statusBar   image.Rectangle
 	claudeBars  []barGeom
 	codexBars   []barGeom
+	trashZone   image.Rectangle
 }
 
 // NewModel creates a new headroom TUI model.
-func NewModel(debugSleep bool) Model {
+func NewModel(debugSleep, demo bool) Model {
 	s := stateLoading
 	if debugSleep {
 		s = stateSleeping
@@ -119,6 +125,7 @@ func NewModel(debugSleep bool) Model {
 		lastFocusTime:  time.Now(),
 		state:          s,
 		debugSleep:     debugSleep,
+		demoMode:       demo,
 		keys:           newKeyMap(),
 		layout:         &layoutInfo{},
 	}
@@ -248,6 +255,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		return m, tea.Batch(cmds...)
 
+	case demoTickMsg:
+		return m.updateDemo()
+
 	case sleepTickMsg:
 		if m.state == stateLoading {
 			m.sleepFrame++
@@ -301,6 +311,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Stop ticking once all bars have finished animating.
 			if m.allBarsFinished() {
 				m.anim.barAnimating = false
+				if m.demoMode {
+					m.demoStep = demoWait1
+					m.demoFrame = 0
+					return m, demoTickCmd()
+				}
 				return m, nil
 			}
 			return m, plasmaTickCmd()
@@ -312,18 +327,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, plasmaTickCmd()
 
 	case tea.MouseClickMsg:
+		if m.demoMode && m.demoStep != demoIdle {
+			return m, nil
+		}
 		if m.state == stateRunning && m.inputMode == inputNone && m.width >= 40 && m.height >= 12 {
 			return m.handleMouseDown(msg)
 		}
 		return m, nil
 
 	case tea.MouseMotionMsg:
+		if m.demoMode && m.demoStep != demoIdle {
+			return m, nil
+		}
 		if m.drag.phase != dragIdle {
 			return m.handleMouseMove(msg)
 		}
 		return m, nil
 
 	case tea.MouseReleaseMsg:
+		if m.demoMode && m.demoStep != demoIdle {
+			return m, nil
+		}
 		if m.drag.phase != dragIdle {
 			return m.handleMouseUp(msg)
 		}
@@ -338,6 +362,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // handleKey processes keyboard input.
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// Demo mode: only q quits
+	if m.demoMode && m.demoStep != demoIdle {
+		if key.Matches(msg, m.keys.Quit) {
+			return m, tea.Quit
+		}
+		return m, nil
+	}
+
 	// In input mode (interval prompt)
 	if m.inputMode == inputInterval {
 		return m.handleIntervalInput(msg)

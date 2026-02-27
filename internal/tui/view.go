@@ -187,7 +187,7 @@ func (m Model) View() tea.View {
 			var content string
 			var barInfos []barLineInfo
 			if len(pd.cats) == 0 {
-				content = dimStyle.Render("All bars hidden (press 0 to reset)")
+				content = dimStyle.Render("All bars hidden — press ") + titleStyle.Render("0") + dimStyle.Render(" to restore")
 			} else {
 				content, barInfos = renderPanelWithGeom(pd.cats, pd.extra, panelContentWidth, eachHeight, animFn)
 			}
@@ -203,7 +203,7 @@ func (m Model) View() tea.View {
 		var content string
 		var barInfos []barLineInfo
 		if len(pd.cats) == 0 {
-			content = dimStyle.Render("All bars hidden (press 0 to reset)")
+			content = dimStyle.Render("All bars hidden — press ") + titleStyle.Render("0") + dimStyle.Render(" to restore")
 		} else {
 			content, barInfos = renderPanelWithGeom(pd.cats, pd.extra, panelContentWidth, panelAreaHeight-vFrame, animFn)
 		}
@@ -347,6 +347,17 @@ func (m Model) View() tea.View {
 			ghostLayer := lipgloss.NewLayer(ghost).
 				X(ghostX).Y(m.drag.currY).Z(10).ID("ghost")
 			comp.AddLayers(ghostLayer)
+		}
+
+		// Trash zone layer during active drag.
+		if m.drag.phase == dragActive {
+			tz := trashZoneRect(w, h)
+			m.layout.trashZone = tz
+			hovering := image.Pt(m.drag.currX, m.drag.currY).In(tz)
+			trashContent := renderTrashZone(hovering)
+			trashLayer := lipgloss.NewLayer(trashContent).
+				X(tz.Min.X).Y(tz.Min.Y).Z(5).ID("trash")
+			comp.AddLayers(trashLayer)
 		}
 
 		content = comp.Render()
@@ -673,4 +684,32 @@ func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width i
 	}
 
 	return strings.Join(lines, "\n"), barInfos
+}
+
+// renderTrashZone renders a block-pixel trashcan icon.
+// When hovering is true, it renders in red; otherwise dim lavender.
+func renderTrashZone(hovering bool) string {
+	fg := colorDim
+	if hovering {
+		fg = colorError
+	}
+	s := lipgloss.NewStyle().Foreground(fg)
+
+	//     ▄▄▄        flat knob handle
+	//   ▄█████▄      lid (overhangs body)
+	//   ▐█████▌      lid rim
+	//    █▌█▌█       body with ridges
+	//    █▌█▌█       body with ridges
+	//    █▌█▌█       body with ridges
+	//    ▀▀▀▀▀       base
+	lines := []string{
+		"    " + s.Render("▄▄▄"),
+		"  " + s.Render("▄█████▄"),
+		"  " + s.Render("▐█████▌"),
+		"   " + s.Render("█▌█▌█"),
+		"   " + s.Render("█▌█▌█"),
+		"   " + s.Render("█▌█▌█"),
+		"   " + s.Render("▀▀▀▀▀"),
+	}
+	return strings.Join(lines, "\n")
 }

@@ -231,12 +231,17 @@ func (m Model) handleMouseUp(msg tea.MouseReleaseMsg) (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Bar dragged to screen edge → hide. Terminal mouse coords are clamped
-	// to [0, width-1], so we use a small threshold from the edges.
-	if m.drag.phase == dragActive && m.drag.target == dragTargetBar {
+	// Check trash zone hit on active drag release.
+	if m.drag.phase == dragActive && m.layout != nil {
 		mouse := msg.Mouse()
-		if mouse.X <= 1 || mouse.X >= m.width-2 {
-			m.layoutState.hidden[m.drag.barKey] = true
+		pt := image.Pt(mouse.X, mouse.Y)
+		if pt.In(m.layout.trashZone) {
+			switch m.drag.target {
+			case dragTargetBar:
+				m.layoutState.hidden[m.drag.barKey] = true
+			case dragTargetPanel:
+				m.layoutState.hideAllBarsInPanel(m.drag.panelID)
+			}
 		}
 	}
 

@@ -27,7 +27,7 @@ func newKeyMap() keyMap {
 		),
 		Reset: key.NewBinding(
 			key.WithKeys("0"),
-			key.WithHelp("0", "reset"),
+			key.WithHelp("0", "restore"),
 		),
 	}
 }
