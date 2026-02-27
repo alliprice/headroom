@@ -55,15 +55,15 @@ the macOS Keychain dependency was the only thing stopping headroom from running 
 
 ### phase 3 — internal architecture
 
-**status:** in progress · **depends on:** phase 1
+**status:** done · **depends on:** phase 1
 
-five independent refactors, any order. each replaces something hand-rolled with something that has a name and a shape.
+five independent refactors. each replaces something hand-rolled with something that has a name and a shape.
 
-- **Animator** — four separate hand-rolled frame counters (bar sweep, glide fade, demo drag, plasma phase) replaced by a unified animation system. easing library, named animations, one tick handler to rule them all.
 - ~~**RefreshScheduler**~~ — done. `refreshScheduler` state machine with `tick(now) refreshAction`. replaced 6 inline timing fields and 35 lines of branching with a 10-line dispatch. 9 deterministic unit tests.
-- **LayoutStrategy** — inline dimension checks replaced by strategy objects: `FullLayout`, `CompactLayout`, `MinimalLayout`, `TinyLayout`. a selector picks the strategy. the view function becomes a one-liner.
-- **OutputFormatter** — `--json` and `--status` share the same data, format differently. interface with `JSONFormatter`, `TextFormatter`, and room for `CSVFormatter`, `PrometheusFormatter`, whatever.
-- **Drag Commands** — procedural mutation in drag handlers replaced by a command pattern: `ReorderBar`, `SwapPanels`, `HideBar`, `HidePanel`. enables undo (`ctrl+z`) via a command history stack. every drag becomes reversible.
+- ~~**LayoutStrategy**~~ — done. `computeCompaction` pure function extracted from `renderPanelWithGeom`. progressive compaction decisions (titles, spacing, extra bar) separated from rendering.
+- ~~**OutputFormatter**~~ — done. `fetchHeadroom()` shared pipeline extracted from `RunJSON()` and `RunStatus()`. probe-fetch-compute logic lives once; formatters are thin wrappers. `categoryStatus()`/`extraStatus()` with 5 unit tests.
+- ~~**Animator**~~ — done. `animState` consolidated into `animator.go` with `buildTargets()`, `buildAnimFunc()`, `allBarsFinished()` methods. `easeOutCubic` moved from bar.go. 10 unit tests. model.go and view.go simplified by ~90 lines.
+- ~~**Drag Commands**~~ — done. `layoutCmd` interface with `hideBarCmd`, `hidePanelCmd`, `swapPanelsCmd`, `reorderBarCmd`, `restoreAllCmd`. pre-drag layout snapshot enables net-change tracking. ctrl+z undo via 50-entry command history stack. 8 unit tests.
 
 ### phase 4 — maximum hubris
 
@@ -90,11 +90,11 @@ every identified opportunity for over-engineering, scored by return on investmen
 | **providers** | ~~hardcoded fetch+parse~~ | `Provider` struct + registry | `██████████` done | `██░░░░░░░░` low |
 | **visual regression** | ~~no screenshot testing~~ | golden file ANSI comparison + CI | `██████████` done | `██░░░░░░░░` low |
 | **cross-platform auth** | ~~macOS Keychain only~~ | `credentialProvider` chain | `██████████` done | `██░░░░░░░░` low |
-| **animation** | hand-rolled frame counters ×4 | `Animator` with easing library | `███████░░░` high | `█████░░░░░` med |
+| **animation** | ~~hand-rolled frame counters ×4~~ | `animState` methods + easing | `██████████` done | `█████░░░░░` med |
 | **refresh scheduling** | ~~interleaved with the Update loop~~ | `refreshScheduler` state machine | `██████████` done | `█████░░░░░` med |
-| **layout strategy** | inline dimension checks | `LayoutStrategy` pattern | `█████░░░░░` med | `█████░░░░░` med |
-| **CLI formatters** | two concrete implementations | `OutputFormatter` interface | `█████░░░░░` med | `█████░░░░░` med |
-| **drag system** | procedural mutation | command pattern + undo stack | `█████░░░░░` med | `█████░░░░░` med |
+| **layout strategy** | ~~inline dimension checks~~ | `computeCompaction` pure function | `██████████` done | `█████░░░░░` med |
+| **CLI formatters** | ~~two concrete implementations~~ | `fetchHeadroom()` shared pipeline | `██████████` done | `█████░░░░░` med |
+| **drag system** | ~~procedural mutation~~ | command pattern + undo stack | `██████████` done | `█████░░░░░` med |
 | **themes** | hardcoded palette + plasma gradient | `Theme` objects, runtime switching | `█████░░░░░` med | `████████░░` high |
 | **config system** | zero configuration | TOML + env + flags + defaults | `█████░░░░░` med | `████████░░` high |
 | **noise generators** | FBM + sinusoids, no shared interface | `ProceduralGenerator` interface | `██░░░░░░░░` low | `████████░░` high |
