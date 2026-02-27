@@ -147,8 +147,3 @@ func clamp(v, lo, hi int) int {
 	return v
 }
 
-// easeOutCubic applies a cubic ease-out curve to t in [0,1].
-func easeOutCubic(t float64) float64 {
-	t -= 1
-	return t*t*t + 1
-}

@@ -12,11 +12,6 @@ import (
 	"github.com/alliprice/headroom/internal/provider"
 )
 
-// barAnimFunc is a callback that returns animated (usage, glide, glideOpacity)
-// values for a given bar key during the loading→running transition sweep.
-// If nil, bars are rendered at their real values with full glide opacity.
-type barAnimFunc func(key string, usage, glide float64) (animUsage, animGlide, glideOpacity float64)
-
 // windowTitle is the terminal window title in vaporwave full-width characters.
 const windowTitle = "ｈｅａｄｒｏｏｍ"
 
@@ -123,38 +118,8 @@ func (m Model) View() tea.View {
 	panelContentWidth := panelWidth - hFrame
 	widthArg := panelWidth // v2: Width() includes borders and padding
 
-	// Build animation callback for the loading→running bar sweep phase.
-	var animFn barAnimFunc
-	if m.anim.barAnimating {
-		elapsedMs := (m.sleepFrame - m.anim.barStartFrame) * 100
-		targetMap := make(map[string]barAnimTarget, len(m.anim.barTargets))
-		for _, bt := range m.anim.barTargets {
-			targetMap[bt.key] = bt
-		}
-		animFn = func(key string, usage, glide float64) (float64, float64, float64) {
-			bt, ok := targetMap[key]
-			if !ok {
-				return usage, glide, 1.0
-			}
-			// Glide markers all fade in together over the first 200ms.
-			opacity := float64(elapsedMs) / 200.0
-			if opacity > 1 {
-				opacity = 1
-			}
-			// Bar sweep starts at bt.startMs (200ms+ to let glide appear first).
-			barElapsed := elapsedMs - bt.startMs
-			if barElapsed <= 0 {
-				return 0, bt.glide, opacity
-			}
-			sweepT := float64(barElapsed) / 1000.0
-			if sweepT > 1 {
-				sweepT = 1
-			}
-			eased := easeOutCubic(sweepT)
-			animUsage := bt.usage * eased
-			return animUsage, bt.glide, opacity
-		}
-	}
+	// Build animation callback for the loading->running bar sweep phase.
+	animFn := m.anim.buildAnimFunc(m.sleepFrame)
 
 	// Determine panel rendering order.
 	type panelDef struct {

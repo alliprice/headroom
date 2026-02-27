@@ -26,23 +26,6 @@ const (
 	inputInterval
 )
 
-// barAnimTarget holds the sweep target for a single bar during the
-// choreographed loading animation.
-type barAnimTarget struct {
-	key     string
-	usage   float64 // target usagePct
-	glide   float64 // target glidePct
-	startMs int     // ms offset from barStartFrame (0, 500, 1000, ...)
-}
-
-// animState tracks the state of the choreographed loading animation.
-type animState struct {
-	dataReady     bool            // fetchResultMsg received
-	barAnimating  bool            // bar sweep phase active
-	barStartFrame int             // sleepFrame when bar animation began
-	barTargets    []barAnimTarget // per-bar sweep targets
-}
-
 // Model is the Bubble Tea model for the headroom TUI.
 type Model struct {
 	// Data
@@ -251,28 +234,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.state = stateRunning
 				m.anim.barAnimating = true
 				m.anim.barStartFrame = m.sleepFrame
-				// Populate bar targets - all start at 200ms (after glide markers fade in).
-				var targets []barAnimTarget
-				for _, cat := range m.categories {
-					usage := cat.Utilization
-					glide := parse.CalcGlideSlope(cat.ResetsAt, cat.WindowSeconds)
-					targets = append(targets, barAnimTarget{
-						key:     cat.Key,
-						usage:   usage,
-						glide:   glide,
-						startMs: 200,
-					})
-				}
-				// Add extra usage bar if present.
-				if m.extra != nil {
-					targets = append(targets, barAnimTarget{
-						key:     "extra_usage",
-						usage:   m.extra.Utilization,
-						glide:   parse.CalcMonthGlide(),
-						startMs: 200,
-					})
-				}
-				m.anim.barTargets = targets
+				m.anim.buildTargets(m.categories, m.extra)
 				// Sync layout state.
 				catsByProvider := m.groupCatsByProvider()
 				if len(m.layoutState.panelOrder) == 0 {
@@ -287,7 +249,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.state == stateRunning && m.anim.barAnimating {
 			m.sleepFrame++
 			// Stop ticking once all bars have finished animating.
-			if m.allBarsFinished() {
+			if m.anim.allBarsFinished(m.sleepFrame) {
 				m.anim.barAnimating = false
 				if m.demoMode {
 					m.demoStep = demoWait1
@@ -392,18 +354,6 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
-}
-
-// allBarsFinished returns true once all bar sweep + glide fade animations
-// have completed (last bar needs startMs + 1000ms sweep + 200ms glide fade).
-func (m Model) allBarsFinished() bool {
-	if len(m.anim.barTargets) == 0 {
-		return true
-	}
-	elapsedMs := (m.sleepFrame - m.anim.barStartFrame) * 100 // 100ms per frame
-	last := m.anim.barTargets[len(m.anim.barTargets)-1]
-	// Last bar needs: startMs + 1000ms sweep (glide is already visible).
-	return elapsedMs >= last.startMs+1000
 }
 
 // handleIntervalInput processes keyboard input while in interval-prompt mode.
