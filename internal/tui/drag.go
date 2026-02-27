@@ -14,7 +14,7 @@ type dragPhase int
 const (
 	dragIdle    dragPhase = iota
 	dragPending           // mousedown received, waiting for movement threshold
-	dragActive            // dragging --past movement threshold
+	dragActive            // dragging - past movement threshold
 )
 
 // dragTarget identifies what was grabbed.
@@ -78,7 +78,7 @@ func (m Model) handleMouseDown(msg tea.MouseClickMsg) (Model, tea.Cmd) {
 			}
 		}
 	}
-	// Check panels (border/empty space --anything not a bar).
+	// Check panels (border/empty space - anything not a bar).
 	for _, pid := range m.layoutState.panelOrder {
 		if pRect, ok := m.layout.panels[pid]; ok && image.Pt(x, y).In(pRect) {
 			p := provider.ByID(pid)
@@ -136,7 +136,7 @@ func (m Model) handleMouseMove(msg tea.MouseMotionMsg) (Model, tea.Cmd) {
 // liveReorderBar moves the dragged bar to the slot under the cursor,
 // causing other bars to shift like phone app icons. The target slot is
 // computed by counting non-dragged items whose midpoint is above the
-// cursor --this avoids oscillation from the dragged item's own geometry.
+// cursor - this avoids oscillation from the dragged item's own geometry.
 func (m *Model) liveReorderBar() {
 	pid := m.drag.panelID
 	bars := m.layout.bars[pid]

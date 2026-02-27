@@ -217,7 +217,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.lastFetchTime = &t
 		}
 		if m.state == stateLoading {
-			// Signal data is ready but don't transition yet --wait for frame ≥40
+			// Signal data is ready but don't transition yet - wait for frame ≥40
 			// in the sleepTickMsg handler to enforce the minimum 4s loading time.
 			m.anim.dataReady = true
 			return m, nil
@@ -280,7 +280,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.state = stateRunning
 				m.anim.barAnimating = true
 				m.anim.barStartFrame = m.sleepFrame
-				// Populate bar targets --all start at 200ms (after glide markers fade in).
+				// Populate bar targets - all start at 200ms (after glide markers fade in).
 				var targets []barAnimTarget
 				for _, cat := range m.categories {
 					usage := cat.Utilization

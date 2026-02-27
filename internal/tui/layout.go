@@ -5,7 +5,7 @@ import "image"
 // layoutState holds user-customizable layout: panel order, category order
 // within panels, and hidden categories. Persists across data refreshes.
 type layoutState struct {
-	panelOrder []string            // e.g. ["claude", "codex"] --render order
+	panelOrder []string            // e.g. ["claude", "codex"] - render order
 	catOrder   map[string][]string // provider ID → category key order
 	hidden     map[string]bool     // category keys hidden by drag-off
 }

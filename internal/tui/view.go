@@ -98,7 +98,7 @@ func (m Model) View() tea.View {
 		return newView(content)
 	}
 
-	// Small terminal fallback --no borders.
+	// Small terminal fallback - no borders.
 	if w < 40 || h < 12 {
 		var flatCats []parse.Category
 		for _, pc := range allPanelCats {
@@ -196,7 +196,7 @@ func (m Model) View() tea.View {
 			var content string
 			var barInfos []barLineInfo
 			if len(pd.cats) == 0 {
-				content = dimStyle.Render("All bars hidden --press ") + titleStyle.Render("0") + dimStyle.Render(" to restore")
+				content = dimStyle.Render("All bars hidden - press ") + titleStyle.Render("0") + dimStyle.Render(" to restore")
 			} else {
 				content, barInfos = renderPanelWithGeom(pd.cats, pd.extra, panelContentWidth, eachHeight, animFn)
 			}
@@ -213,7 +213,7 @@ func (m Model) View() tea.View {
 		var content string
 		var barInfos []barLineInfo
 		if len(pd.cats) == 0 {
-			content = dimStyle.Render("All bars hidden --press ") + titleStyle.Render("0") + dimStyle.Render(" to restore")
+			content = dimStyle.Render("All bars hidden - press ") + titleStyle.Render("0") + dimStyle.Render(" to restore")
 		} else {
 			content, barInfos = renderPanelWithGeom(pd.cats, pd.extra, panelContentWidth, panelAreaHeight-vFrame, animFn)
 		}
@@ -329,7 +329,7 @@ func (m Model) View() tea.View {
 			comp.AddLayers(errorLayer)
 		}
 
-		// Ghost layer during active drag --bordered card following the cursor.
+		// Ghost layer during active drag - bordered card following the cursor.
 		if m.drag.phase == dragActive && m.drag.ghostLabel != "" {
 			ghostStyle := lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
