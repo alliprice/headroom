@@ -144,24 +144,24 @@ func testExtraUsage() *parse.ExtraUsage {
 }
 
 func buildTestModel(w, h int, st state, cats []parse.Category, extra map[string]*parse.ExtraUsage) Model {
+	sched := newRefreshScheduler(0)
+	ft := frozenTime
+	sched.recordFetch(ft)
+
 	m := Model{
-		width:          w,
-		height:         h,
-		state:          st,
-		categories:     cats,
-		providerExtra:  extra,
-		keys:           newKeyMap(),
-		available:      make(map[string]bool),
-		refreshFocused: parse.RefreshFocused,
-		hasFocus:       true,
+		width:         w,
+		height:        h,
+		state:         st,
+		categories:    cats,
+		providerExtra: extra,
+		keys:          newKeyMap(),
+		available:     make(map[string]bool),
+		sched:         sched,
 		layout: &layoutInfo{
 			panels: make(map[string]image.Rectangle),
 			bars:   make(map[string][]barGeom),
 		},
 	}
-
-	ft := frozenTime
-	m.lastFetchTime = &ft
 
 	m.bgGrid = generateBgGrid(w, h)
 	m.bgWidth = w
