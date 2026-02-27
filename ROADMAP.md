@@ -55,12 +55,12 @@ the macOS Keychain dependency was the only thing stopping headroom from running 
 
 ### phase 3 — internal architecture
 
-**status:** not started · **depends on:** phase 1
+**status:** in progress · **depends on:** phase 1
 
 five independent refactors, any order. each replaces something hand-rolled with something that has a name and a shape.
 
 - **Animator** — four separate hand-rolled frame counters (bar sweep, glide fade, demo drag, plasma phase) replaced by a unified animation system. easing library, named animations, one tick handler to rule them all.
-- **RefreshScheduler** — scheduling policy (focused/unfocused intervals, sleep transition, auth-error backoff) extracted from the Update loop into a standalone state machine. the model calls `scheduler.Tick()` and dispatches the result. clean.
+- ~~**RefreshScheduler**~~ — done. `refreshScheduler` state machine with `tick(now) refreshAction`. replaced 6 inline timing fields and 35 lines of branching with a 10-line dispatch. 9 deterministic unit tests.
 - **LayoutStrategy** — inline dimension checks replaced by strategy objects: `FullLayout`, `CompactLayout`, `MinimalLayout`, `TinyLayout`. a selector picks the strategy. the view function becomes a one-liner.
 - **OutputFormatter** — `--json` and `--status` share the same data, format differently. interface with `JSONFormatter`, `TextFormatter`, and room for `CSVFormatter`, `PrometheusFormatter`, whatever.
 - **Drag Commands** — procedural mutation in drag handlers replaced by a command pattern: `ReorderBar`, `SwapPanels`, `HideBar`, `HidePanel`. enables undo (`ctrl+z`) via a command history stack. every drag becomes reversible.
@@ -91,7 +91,7 @@ every identified opportunity for over-engineering, scored by return on investmen
 | **visual regression** | ~~no screenshot testing~~ | golden file ANSI comparison + CI | `██████████` done | `██░░░░░░░░` low |
 | **cross-platform auth** | ~~macOS Keychain only~~ | `credentialProvider` chain | `██████████` done | `██░░░░░░░░` low |
 | **animation** | hand-rolled frame counters ×4 | `Animator` with easing library | `███████░░░` high | `█████░░░░░` med |
-| **refresh scheduling** | interleaved with the Update loop | `RefreshScheduler` state machine | `███████░░░` high | `█████░░░░░` med |
+| **refresh scheduling** | ~~interleaved with the Update loop~~ | `refreshScheduler` state machine | `██████████` done | `█████░░░░░` med |
 | **layout strategy** | inline dimension checks | `LayoutStrategy` pattern | `█████░░░░░` med | `█████░░░░░` med |
 | **CLI formatters** | two concrete implementations | `OutputFormatter` interface | `█████░░░░░` med | `█████░░░░░` med |
 | **drag system** | procedural mutation | command pattern + undo stack | `█████░░░░░` med | `█████░░░░░` med |
