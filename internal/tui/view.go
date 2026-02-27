@@ -695,15 +695,21 @@ func renderTrashZone(hovering bool) string {
 	}
 	s := lipgloss.NewStyle().Foreground(fg)
 
-	//    ▄█▄      handle
-	//  ▄█████▄    lid (wider)
-	//   █▌█▌█     body with slots
-	//   ▀▀▀▀▀    base
+	//     ▄▄▄        flat knob handle
+	//   ▄█████▄      lid (overhangs body)
+	//   ▐█████▌      lid rim
+	//    █▌█▌█       body with ridges
+	//    █▌█▌█       body with ridges
+	//    █▌█▌█       body with ridges
+	//    ▀▀▀▀▀       base
 	lines := []string{
-		"   " + s.Render("▄█▄"),
-		" " + s.Render("▄█████▄"),
-		"  " + s.Render("█▌█▌█"),
-		"  " + s.Render("▀▀▀▀▀"),
+		"    " + s.Render("▄▄▄"),
+		"  " + s.Render("▄█████▄"),
+		"  " + s.Render("▐█████▌"),
+		"   " + s.Render("█▌█▌█"),
+		"   " + s.Render("█▌█▌█"),
+		"   " + s.Render("█▌█▌█"),
+		"   " + s.Render("▀▀▀▀▀"),
 	}
 	return strings.Join(lines, "\n")
 }
