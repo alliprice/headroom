@@ -11,6 +11,11 @@ import (
 	"github.com/alliprice/headroom/internal/parse"
 )
 
+// barAnimFunc is a callback that returns animated (usage, glide, glideOpacity)
+// values for a given bar key during the loading→running transition sweep.
+// If nil, bars are rendered at their real values with full glide opacity.
+type barAnimFunc func(key string, usage, glide float64) (animUsage, animGlide, glideOpacity float64)
+
 // View implements tea.Model. It renders the complete TUI screen.
 func (m Model) View() tea.View {
 	var content string
@@ -25,8 +30,13 @@ func (m Model) View() tea.View {
 	}
 
 	if m.state == stateLoading {
-		dots := strings.Repeat(".", (m.sleepFrame/4)%4)
-		content = RenderPlasma(m.width, m.height, m.sleepFrame, "loading"+dots)
+		var fadeT float64
+		if m.sleepFrame >= 20 {
+			fadeT = 1.0
+		} else {
+			fadeT = float64(m.sleepFrame) / 20.0
+		}
+		content = RenderLoadingFrame(m.bgGrid, m.width, m.height, m.sleepFrame, fadeT)
 		v := tea.NewView(content)
 		v.AltScreen = true
 		v.ReportFocus = true
@@ -115,6 +125,45 @@ func (m Model) View() tea.View {
 	panelContentWidth := panelWidth - hFrame
 	widthArg := panelWidth // v2: Width() includes borders and padding
 
+	// Build animation callback for the loading→running bar sweep phase.
+	var animFn barAnimFunc
+	if m.anim.barAnimating {
+		elapsedMs := (m.sleepFrame - m.anim.barStartFrame) * 100
+		targetMap := make(map[string]barAnimTarget, len(m.anim.barTargets))
+		for _, bt := range m.anim.barTargets {
+			targetMap[bt.key] = bt
+		}
+		animFn = func(key string, usage, glide float64) (float64, float64, float64) {
+			bt, ok := targetMap[key]
+			if !ok {
+				return usage, glide, 1.0
+			}
+			barElapsed := elapsedMs - bt.startMs
+			if barElapsed <= 0 {
+				return 0, 0, 0
+			}
+			// Sweep: 0→target over 1000ms with ease-out cubic.
+			sweepT := float64(barElapsed) / 1000.0
+			if sweepT > 1 {
+				sweepT = 1
+			}
+			eased := easeOutCubic(sweepT)
+			animUsage := bt.usage * eased
+			// Glide marker: hidden until sweep finishes, then fades in over 200ms.
+			var animGlide float64
+			var opacity float64
+			if barElapsed >= 1000 {
+				animGlide = bt.glide
+				fadeElapsed := barElapsed - 1000
+				opacity = float64(fadeElapsed) / 200.0
+				if opacity > 1 {
+					opacity = 1
+				}
+			}
+			return animUsage, animGlide, opacity
+		}
+	}
+
 	// Determine panel rendering order.
 	type panelDef struct {
 		name  string
@@ -153,7 +202,7 @@ func (m Model) View() tea.View {
 			if len(pd.cats) == 0 {
 				content = dimStyle.Render("All bars hidden (press 0 to reset)")
 			} else {
-				content, barInfos = renderPanelWithGeom(pd.cats, pd.extra, panelContentWidth, eachHeight)
+				content, barInfos = renderPanelWithGeom(pd.cats, pd.extra, panelContentWidth, eachHeight, animFn)
 			}
 			p := panelStyle.Width(widthArg).Render(content)
 			p = embedBorderTitle(p, pd.name, panelWidth)
@@ -169,7 +218,7 @@ func (m Model) View() tea.View {
 		if len(pd.cats) == 0 {
 			content = dimStyle.Render("All bars hidden (press 0 to reset)")
 		} else {
-			content, barInfos = renderPanelWithGeom(pd.cats, pd.extra, panelContentWidth, panelAreaHeight-vFrame)
+			content, barInfos = renderPanelWithGeom(pd.cats, pd.extra, panelContentWidth, panelAreaHeight-vFrame, animFn)
 		}
 		panels = panelStyle.Width(widthArg).Render(content)
 		panels = embedBorderTitle(panels, pd.name, panelWidth)
@@ -383,7 +432,8 @@ func renderHelp(k keyMap) string {
 // applies progressive compaction so the content fits within maxHeight rows.
 // width is the inner content width (border and padding already subtracted).
 // The panel title (e.g. "Claude") is rendered in the border by the caller.
-func renderPanel(cats []parse.Category, extra *parse.ExtraUsage, width int, maxHeight int) string {
+// animFn, if non-nil, overrides bar values for the sweep animation.
+func renderPanel(cats []parse.Category, extra *parse.ExtraUsage, width int, maxHeight int, animFn barAnimFunc) string {
 	n := len(cats)
 	if n == 0 {
 		return normalStyle.Render("No data")
@@ -434,7 +484,11 @@ func renderPanel(cats []parse.Category, extra *parse.ExtraUsage, width int, maxH
 			lines = append(lines, alignRow(boldStyle.Render(cat.Name), dimStyle.Render(resetStr), width))
 		}
 
-		lines = append(lines, RenderBar(width, usage, glide))
+		animUsage, animGlide, opacity := usage, glide, 1.0
+		if animFn != nil {
+			animUsage, animGlide, opacity = animFn(cat.Key, usage, glide)
+		}
+		lines = append(lines, RenderBar(width, animUsage, animGlide, opacity))
 
 		if showSpacing && idx < n-1 {
 			lines = append(lines, "")
@@ -446,6 +500,12 @@ func renderPanel(cats []parse.Category, extra *parse.ExtraUsage, width int, maxH
 		if showSpacing {
 			lines = append(lines, "")
 		}
+		extraUsage := extra.Utilization
+		extraGlide := parse.CalcMonthGlide()
+		extraOpacity := 1.0
+		if animFn != nil {
+			extraUsage, extraGlide, extraOpacity = animFn("extra_usage", extraUsage, extraGlide)
+		}
 		if showTitles {
 			limitDollars := extra.MonthlyLimit / 100
 			usedDollars := extra.UsedCredits / 100
@@ -453,7 +513,7 @@ func renderPanel(cats []parse.Category, extra *parse.ExtraUsage, width int, maxH
 			rightStr := fmt.Sprintf("$%.2f / $%.2f  %s", usedDollars, limitDollars, parse.FormatMonthReset())
 			lines = append(lines, alignRow(boldStyle.Render(name), dimStyle.Render(rightStr), width))
 		}
-		lines = append(lines, RenderBar(width, extra.Utilization, parse.CalcMonthGlide()))
+		lines = append(lines, RenderBar(width, extraUsage, extraGlide, extraOpacity))
 	}
 
 	return strings.Join(lines, "\n")
@@ -512,7 +572,7 @@ func (m Model) renderFlat(claudeCats, codexCats []parse.Category, statusBar, err
 	for _, cat := range allCats {
 		usage := cat.Utilization
 		glide := parse.CalcGlideSlope(cat.ResetsAt, cat.WindowSeconds)
-		lines = append(lines, RenderBar(w, usage, glide))
+		lines = append(lines, RenderBar(w, usage, glide, 1.0))
 	}
 
 	body := strings.Join(lines, "\n")
@@ -541,8 +601,9 @@ type barLineInfo struct {
 }
 
 // renderPanelWithGeom is like renderPanel but also returns the relative line
-// index of each bar within the panel content area.
-func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width int, maxHeight int) (string, []barLineInfo) {
+// index of each bar within the panel content area. animFn, if non-nil,
+// overrides bar values for the sweep animation.
+func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width int, maxHeight int, animFn barAnimFunc) (string, []barLineInfo) {
 	n := len(cats)
 	if n == 0 {
 		return normalStyle.Render("No data"), nil
@@ -589,7 +650,11 @@ func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width i
 			lineIdx++
 		}
 
-		lines = append(lines, RenderBar(width, usage, glide))
+		animUsage, animGlide, opacity := usage, glide, 1.0
+		if animFn != nil {
+			animUsage, animGlide, opacity = animFn(cat.Key, usage, glide)
+		}
+		lines = append(lines, RenderBar(width, animUsage, animGlide, opacity))
 		lineIdx++
 		barInfos = append(barInfos, barLineInfo{key: cat.Key, relY: catStartY, height: lineIdx - catStartY})
 
@@ -613,7 +678,13 @@ func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width i
 			lines = append(lines, alignRow(boldStyle.Render(name), dimStyle.Render(rightStr), width))
 			lineIdx++
 		}
-		lines = append(lines, RenderBar(width, extra.Utilization, parse.CalcMonthGlide()))
+		extraUsage := extra.Utilization
+		extraGlide := parse.CalcMonthGlide()
+		extraOpacity := 1.0
+		if animFn != nil {
+			extraUsage, extraGlide, extraOpacity = animFn("extra_usage", extraUsage, extraGlide)
+		}
+		lines = append(lines, RenderBar(width, extraUsage, extraGlide, extraOpacity))
 		lineIdx++
 		barInfos = append(barInfos, barLineInfo{key: "extra_usage", relY: catStartY, height: lineIdx - catStartY})
 	}

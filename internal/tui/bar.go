@@ -33,8 +33,10 @@ func lerpRGB(a, b [3]uint8, t float64) (uint8, uint8, uint8) {
 
 // RenderBar returns a string representing a usage bar with a glide slope
 // marker. The fill uses a gradient: purple→pink before the glide marker,
-// yellow→orange after. Width is in terminal columns.
-func RenderBar(width int, usagePct, glidePct float64) string {
+// yellow→orange after. Width is in terminal columns. glideOpacity controls
+// the visibility of the glide marker: 0.0 = invisible (matches bar background),
+// 1.0 = fully visible in the normal glide color.
+func RenderBar(width int, usagePct, glidePct, glideOpacity float64) string {
 	if width < 3 {
 		return ""
 	}
@@ -64,9 +66,14 @@ func RenderBar(width int, usagePct, glidePct float64) string {
 		switch {
 		case i == glidePos:
 			flushEmpty(i)
+			// Interpolate glide foreground: barEmpty (#1E1028, 30,16,40) → glide (#F5F3FF, 245,243,255)
+			gr := uint8(30 + glideOpacity*(245-30))
+			gg := uint8(16 + glideOpacity*(243-16))
+			gb := uint8(40 + glideOpacity*(255-40))
+			fgHex := fmt.Sprintf("#%02x%02x%02x", gr, gg, gb)
 			buf.WriteString(
 				lipgloss.NewStyle().
-					Foreground(colorGlide).
+					Foreground(lipgloss.Color(fgHex)).
 					Background(colorBarEmpty).
 					Bold(true).
 					Render("│"),
@@ -138,4 +145,10 @@ func clamp(v, lo, hi int) int {
 		return hi
 	}
 	return v
+}
+
+// easeOutCubic applies a cubic ease-out curve to t in [0,1].
+func easeOutCubic(t float64) float64 {
+	t -= 1
+	return t*t*t + 1
 }

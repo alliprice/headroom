@@ -26,6 +26,23 @@ const (
 	inputInterval
 )
 
+// barAnimTarget holds the sweep target for a single bar during the
+// choreographed loading animation.
+type barAnimTarget struct {
+	key     string
+	usage   float64 // target usagePct
+	glide   float64 // target glidePct
+	startMs int     // ms offset from barStartFrame (0, 500, 1000, ...)
+}
+
+// animState tracks the state of the choreographed loading animation.
+type animState struct {
+	dataReady     bool            // fetchResultMsg received
+	barAnimating  bool            // bar sweep phase active
+	barStartFrame int             // sleepFrame when bar animation began
+	barTargets    []barAnimTarget // per-bar sweep targets
+}
+
 // Model is the Bubble Tea model for the headroom TUI.
 type Model struct {
 	// Data
@@ -50,6 +67,7 @@ type Model struct {
 	// Mode
 	state      state
 	sleepFrame int
+	anim       animState
 
 	// Inline prompt for "t" key (change interval)
 	inputMode inputMode
@@ -171,9 +189,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.lastFetchTime = &t
 		}
 		if m.state == stateLoading {
-			m.state = stateRunning
+			// Signal data is ready but don't transition yet — wait for frame ≥40
+			// in the sleepTickMsg handler to enforce the minimum 4s loading time.
+			m.anim.dataReady = true
+			return m, nil
 		}
-		// Initialize or sync layout state with current category keys.
+		// Normal running state: sync layout.
 		var claudeKeys, codexKeys []string
 		for _, c := range m.categories {
 			if len(c.Key) > 6 && c.Key[:6] == "codex_" {
@@ -228,7 +249,65 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case sleepTickMsg:
-		if m.state != stateSleeping && m.state != stateLoading {
+		if m.state == stateLoading {
+			m.sleepFrame++
+			// Transition to running once data is ready AND minimum 4s elapsed (frame ≥40).
+			if m.anim.dataReady && m.sleepFrame >= 40 {
+				m.state = stateRunning
+				m.anim.barAnimating = true
+				m.anim.barStartFrame = m.sleepFrame
+				// Populate bar targets with 500ms stagger.
+				var targets []barAnimTarget
+				offset := 0
+				for _, cat := range m.categories {
+					usage := cat.Utilization
+					glide := parse.CalcGlideSlope(cat.ResetsAt, cat.WindowSeconds)
+					targets = append(targets, barAnimTarget{
+						key:     cat.Key,
+						usage:   usage,
+						glide:   glide,
+						startMs: offset,
+					})
+					offset += 500
+				}
+				// Add extra usage bar if present.
+				if m.extra != nil {
+					targets = append(targets, barAnimTarget{
+						key:     "extra_usage",
+						usage:   m.extra.Utilization,
+						glide:   parse.CalcMonthGlide(),
+						startMs: offset,
+					})
+				}
+				m.anim.barTargets = targets
+				// Sync layout state.
+				var claudeKeys, codexKeys []string
+				for _, c := range m.categories {
+					if len(c.Key) > 6 && c.Key[:6] == "codex_" {
+						codexKeys = append(codexKeys, c.Key)
+					} else {
+						claudeKeys = append(claudeKeys, c.Key)
+					}
+				}
+				if len(m.layoutState.panelOrder) == 0 {
+					m.layoutState = defaultLayoutState(claudeKeys, codexKeys)
+				} else {
+					m.layoutState.syncCategories(claudeKeys, codexKeys)
+				}
+				return m, plasmaTickCmd() // keep ticking for bar animation
+			}
+			return m, plasmaTickCmd()
+		}
+		if m.state == stateRunning && m.anim.barAnimating {
+			m.sleepFrame++
+			// Stop ticking once all bars have finished animating.
+			if m.allBarsFinished() {
+				m.anim.barAnimating = false
+				return m, nil
+			}
+			return m, plasmaTickCmd()
+		}
+		if m.state != stateSleeping {
 			return m, nil
 		}
 		m.sleepFrame++
@@ -314,6 +393,18 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// allBarsFinished returns true once all bar sweep + glide fade animations
+// have completed (last bar needs startMs + 1000ms sweep + 200ms glide fade).
+func (m Model) allBarsFinished() bool {
+	if len(m.anim.barTargets) == 0 {
+		return true
+	}
+	elapsedMs := (m.sleepFrame - m.anim.barStartFrame) * 100 // 100ms per frame
+	last := m.anim.barTargets[len(m.anim.barTargets)-1]
+	// Last bar needs: startMs + 1000ms sweep + 200ms glide fade.
+	return elapsedMs >= last.startMs+1200
 }
 
 // handleIntervalInput processes keyboard input while in interval-prompt mode.

@@ -81,6 +81,161 @@ func plasmaTickCmd() tea.Cmd {
 	})
 }
 
+// RenderLoadingFrame renders a loading animation frame with a plasma-colored
+// ball on a katakana background, and border/title that fade in based on fadeT.
+// bgGrid may be nil (graceful fallback to spaces).
+func RenderLoadingFrame(bgGrid []bgCell, w, h, frame int, fadeT float64) string {
+	t := float64(frame) * 0.08
+	brightness := 0.85 + 0.15*math.Sin(t*0.3)
+
+	// Logo lines (same as RenderPlasma but without the subtitle).
+	logo := []string{
+		"╭─────────╮",
+		"│  ▄███▄  │",
+		"│ ███████ │",
+		"│  ▀███▀  │",
+		"╰─────────╯",
+		"",
+		"h e a d r o o m",
+	}
+
+	// Ball characters set.
+	ballChars := map[rune]bool{'▄': true, '█': true, '▀': true}
+
+	// Border characters set.
+	borderChars := map[rune]bool{'╭': true, '─': true, '╮': true, '│': true, '╰': true, '╯': true}
+
+	// Compute widest line.
+	logoWidth := 0
+	for _, l := range logo {
+		rw := len([]rune(l))
+		if rw > logoWidth {
+			logoWidth = rw
+		}
+	}
+	logoStartX := (w - logoWidth) / 2
+	logoStartY := (h - len(logo)) / 2
+
+	// Build cell map tagging each logo cell as ball, border, or title.
+	type cellType int
+	const (
+		cellBall cellType = iota
+		cellBorder
+		cellTitle
+	)
+	type logoCell struct{ y, x int }
+	type logoCellInfo struct {
+		ch   rune
+		kind cellType
+	}
+	logoCells := make(map[logoCell]logoCellInfo)
+
+	for dy, line := range logo {
+		runes := []rune(line)
+		lineStartX := logoStartX + (logoWidth-len(runes))/2
+		for dx, r := range runes {
+			if r == ' ' {
+				continue
+			}
+			var kind cellType
+			if ballChars[r] {
+				kind = cellBall
+			} else if borderChars[r] {
+				kind = cellBorder
+			} else {
+				kind = cellTitle
+			}
+			logoCells[logoCell{logoStartY + dy, lineStartX + dx}] = logoCellInfo{r, kind}
+		}
+	}
+
+	// Target colors.
+	borderR, borderG, borderB := uint8(109), uint8(40), uint8(217)  // #6D28D9
+	titleR, titleG, titleB := uint8(236), uint8(72), uint8(153)     // #EC4899
+
+	var buf strings.Builder
+	buf.Grow(w * h * 20)
+
+	// Track previous foreground RGB to avoid redundant escape sequences.
+	var prevFgR, prevFgG, prevFgB uint8
+	prevFgSet := false
+
+	emitFg := func(r, g, b uint8) {
+		if !prevFgSet || r != prevFgR || g != prevFgG || b != prevFgB {
+			fmt.Fprintf(&buf, "\x1b[38;2;%d;%d;%dm", r, g, b)
+			prevFgR, prevFgG, prevFgB = r, g, b
+			prevFgSet = true
+		}
+	}
+
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			// Get bg cell info.
+			var bgCh rune = ' '
+			var bgGray uint8 = 35
+			if bgGrid != nil && y*w+x < len(bgGrid) {
+				cell := bgGrid[y*w+x]
+				bgCh = cell.ch
+				bgGray = cell.gray
+			}
+
+			if info, ok := logoCells[logoCell{y, x}]; ok {
+				switch info.kind {
+				case cellBall:
+					// Compute plasma color (same formula as RenderPlasma).
+					fx, fy := float64(x), float64(y)
+					v := math.Sin(fx/16.0+t) +
+						math.Sin(fy/12.0+t*0.7) +
+						math.Sin((fx+fy)/18.0+t*0.5) +
+						math.Sin(math.Sqrt(fx*fx+fy*fy)/14.0+t*0.3)
+					idx := int((v + 4.0) / 8.0 * 255.0)
+					if idx < 0 {
+						idx = 0
+					}
+					if idx > 255 {
+						idx = 255
+					}
+					rgb := gradientRGB[idx]
+					pr := uint8(math.Min(float64(rgb[0])*brightness, 255))
+					pg := uint8(math.Min(float64(rgb[1])*brightness, 255))
+					pb := uint8(math.Min(float64(rgb[2])*brightness, 255))
+					emitFg(pr, pg, pb)
+					buf.WriteRune(info.ch)
+
+				case cellBorder:
+					// Interpolate foreground: bgGray → colorBorder (#6D28D9).
+					fr := uint8(float64(bgGray) + fadeT*(float64(borderR)-float64(bgGray)))
+					fg := uint8(float64(bgGray) + fadeT*(float64(borderG)-float64(bgGray)))
+					fb := uint8(float64(bgGray) + fadeT*(float64(borderB)-float64(bgGray)))
+					emitFg(fr, fg, fb)
+					buf.WriteRune(info.ch)
+
+				case cellTitle:
+					// Interpolate foreground: bgGray → colorTitle (#EC4899).
+					fr := uint8(float64(bgGray) + fadeT*(float64(titleR)-float64(bgGray)))
+					fg := uint8(float64(bgGray) + fadeT*(float64(titleG)-float64(bgGray)))
+					fb := uint8(float64(bgGray) + fadeT*(float64(titleB)-float64(bgGray)))
+					emitFg(fr, fg, fb)
+					buf.WriteRune(info.ch)
+				}
+			} else {
+				// Regular background cell: render katakana char in its grayscale color.
+				emitFg(bgGray, bgGray, bgGray)
+				buf.WriteRune(bgCh)
+			}
+		}
+
+		// Reset at end of every row; newline after every row except the last.
+		buf.WriteString("\x1b[0m")
+		prevFgSet = false
+		if y < h-1 {
+			buf.WriteByte('\n')
+		}
+	}
+
+	return buf.String()
+}
+
 // RenderPlasma renders a full-screen plasma animation frame to a string
 // ready for direct terminal output. The logo is centered and overlaid with
 // a bright white foreground on top of the plasma background.
