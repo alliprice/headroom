@@ -39,6 +39,9 @@ type dragState struct {
 	// Mouse positions.
 	startX, startY int // initial click position
 	currX, currY   int // current mouse position
+
+	// Pre-drag layout snapshot for computing net change.
+	preLayout layoutState
 }
 
 const dragThreshold = 2 // cells of movement before drag activates
@@ -74,6 +77,7 @@ func (m Model) handleMouseDown(msg tea.MouseClickMsg) (Model, tea.Cmd) {
 					startX:     x, startY: y,
 					currX: x, currY: y,
 				}
+				m.drag.preLayout = m.layoutState.clone()
 				return m, nil
 			}
 		}
@@ -94,6 +98,7 @@ func (m Model) handleMouseDown(msg tea.MouseClickMsg) (Model, tea.Cmd) {
 				startX:     x, startY: y,
 				currX: x, currY: y,
 			}
+			m.drag.preLayout = m.layoutState.clone()
 			return m, nil
 		}
 	}
@@ -219,16 +224,46 @@ func (m Model) handleMouseUp(msg tea.MouseReleaseMsg) (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Check trash zone hit on active drag release.
 	if m.drag.phase == dragActive && m.layout != nil {
 		mouse := msg.Mouse()
 		pt := image.Pt(mouse.X, mouse.Y)
 		if pt.In(m.layout.trashZone) {
+			// Trash drop: create hide command.
 			switch m.drag.target {
 			case dragTargetBar:
-				m.layoutState.hidden[m.drag.barKey] = true
+				cmd := hideBarCmd{barKey: m.drag.barKey}
+				cmd.Execute(&m.layoutState)
+				m.pushCmd(cmd)
 			case dragTargetPanel:
-				m.layoutState.hideAllBarsInPanel(m.drag.panelID)
+				// Collect the keys that will be hidden (only currently visible ones).
+				var keys []string
+				for _, k := range m.layoutState.catOrder[m.drag.panelID] {
+					if !m.layoutState.hidden[k] {
+						keys = append(keys, k)
+					}
+				}
+				cmd := hidePanelCmd{panelID: m.drag.panelID, keys: keys}
+				cmd.Execute(&m.layoutState)
+				m.pushCmd(cmd)
+			}
+		} else {
+			// Non-trash: record net reorder as a command.
+			switch m.drag.target {
+			case dragTargetBar:
+				pre := m.drag.preLayout.catOrder[m.drag.panelID]
+				post := m.layoutState.catOrder[m.drag.panelID]
+				if !slicesEqual(pre, post) {
+					cmd := reorderBarCmd{
+						panelID:  m.drag.panelID,
+						oldOrder: copyStrings(pre),
+						newOrder: copyStrings(post),
+					}
+					m.pushCmd(cmd)
+				}
+			case dragTargetPanel:
+				if !slicesEqual(m.drag.preLayout.panelOrder, m.layoutState.panelOrder) {
+					m.pushCmd(swapPanelsCmd{})
+				}
 			}
 		}
 	}
@@ -253,4 +288,24 @@ func abs(x int) int {
 		return -x
 	}
 	return x
+}
+
+// slicesEqual returns true if a and b contain the same strings in the same order.
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// copyStrings returns a copy of a string slice.
+func copyStrings(s []string) []string {
+	c := make([]string, len(s))
+	copy(c, s)
+	return c
 }

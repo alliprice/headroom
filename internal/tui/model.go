@@ -79,6 +79,9 @@ type Model struct {
 
 	// Drag state machine
 	drag dragState
+
+	// Undo history for layout commands
+	cmdHistory []layoutCmd
 }
 
 // layoutInfo tracks screen-space geometry of UI elements for hit-testing.
@@ -349,7 +352,14 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.inputBuf = ""
 		return m, nil
 	case key.Matches(msg, m.keys.Reset):
-		m.layoutState = defaultLayoutState(m.groupCatsByProvider())
+		prev := m.layoutState.clone()
+		newLS := defaultLayoutState(m.groupCatsByProvider())
+		cmd := restoreAllCmd{prevState: prev, newState: newLS}
+		m.layoutState = cmd.newState.clone()
+		m.pushCmd(cmd)
+		return m, nil
+	case key.Matches(msg, m.keys.Undo):
+		m.undoCmd()
 		return m, nil
 	}
 
@@ -389,6 +399,24 @@ func (m Model) handleIntervalInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+}
+
+// pushCmd appends a command to the undo history, capping at maxCmdHistory.
+func (m *Model) pushCmd(cmd layoutCmd) {
+	m.cmdHistory = append(m.cmdHistory, cmd)
+	if len(m.cmdHistory) > maxCmdHistory {
+		m.cmdHistory = m.cmdHistory[len(m.cmdHistory)-maxCmdHistory:]
+	}
+}
+
+// undoCmd pops and reverses the last command in the undo history.
+func (m *Model) undoCmd() {
+	if len(m.cmdHistory) == 0 {
+		return
+	}
+	last := m.cmdHistory[len(m.cmdHistory)-1]
+	m.cmdHistory = m.cmdHistory[:len(m.cmdHistory)-1]
+	last.Undo(&m.layoutState)
 }
 
 // groupCatsByProvider builds a provider ID → category keys map from the
