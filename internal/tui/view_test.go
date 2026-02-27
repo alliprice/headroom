@@ -251,3 +251,68 @@ func TestView_Empty(t *testing.T) {
 	m := buildTestModel(120, 40, stateRunning, nil, nil)
 	assertGolden(t, "empty_120x40", viewString(m))
 }
+
+func TestCompaction_Full(t *testing.T) {
+	// 3 cats with extra, plenty of height (3 bars + 3 titles + 2 spacing + 3 extra = 11)
+	c := computeCompaction(3, true, 20)
+	if !c.showTitles || !c.showSpacing || !c.showExtra {
+		t.Errorf("expected all true, got %+v", c)
+	}
+}
+
+func TestCompaction_NoSpacing(t *testing.T) {
+	// 3 cats: bars(3) + titles(3) = 6 fits in 6, but spacing needs 2 more = 8
+	c := computeCompaction(3, false, 6)
+	if !c.showTitles {
+		t.Errorf("expected showTitles=true, got %+v", c)
+	}
+	if c.showSpacing {
+		t.Errorf("expected showSpacing=false, got %+v", c)
+	}
+}
+
+func TestCompaction_BarsOnly(t *testing.T) {
+	// 3 cats with only 3 rows - just enough for bars
+	c := computeCompaction(3, false, 3)
+	if c.showTitles || c.showSpacing || c.showExtra {
+		t.Errorf("expected all false, got %+v", c)
+	}
+}
+
+func TestCompaction_ExtraFits(t *testing.T) {
+	// 2 cats: bars(2) + titles(2) + spacing(1) + extra(3: bar+title+spacing) = 8
+	c := computeCompaction(2, true, 8)
+	if !c.showExtra {
+		t.Errorf("expected showExtra=true, got %+v", c)
+	}
+}
+
+func TestCompaction_ExtraDoesNotFit(t *testing.T) {
+	// 2 cats: bars(2) + titles(2) + spacing(1) = 5, extra needs 3 more = 8, only 7 available
+	c := computeCompaction(2, true, 7)
+	if c.showExtra {
+		t.Errorf("expected showExtra=false, got %+v", c)
+	}
+	if !c.showTitles || !c.showSpacing {
+		t.Errorf("expected titles and spacing true, got %+v", c)
+	}
+}
+
+func TestCompaction_SingleCategory(t *testing.T) {
+	// 1 cat: bars(1) + titles(1) = 2, spacing = n-1 = 0
+	c := computeCompaction(1, false, 2)
+	if !c.showTitles {
+		t.Errorf("expected showTitles=true, got %+v", c)
+	}
+	// n-1 = 0 so spacing adds nothing; should still be true
+	if !c.showSpacing {
+		t.Errorf("expected showSpacing=true (n-1=0), got %+v", c)
+	}
+}
+
+func TestCompaction_ZeroCategories(t *testing.T) {
+	c := computeCompaction(0, false, 10)
+	if !c.showTitles || !c.showSpacing {
+		t.Errorf("n=0 should allow titles and spacing (0 cost), got %+v", c)
+	}
+}
