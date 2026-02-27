@@ -12,28 +12,30 @@ this document charts the path from "wildly overbuilt" to "architecturally transc
 
 ### phase 0 — provider system
 
-**status:** in progress
+**status:** done
 
-the data providers are hardcoded. claude and codex fetch/parse logic is wired directly into the model. this is the one thing in headroom that is *not* overbuilt, and that oversight will be corrected.
+the data providers were hardcoded. claude and codex fetch/parse logic was wired directly into the model. that oversight has been corrected.
 
-- `Provider` interface — `Fetch`, `Parse`, `IsAvailable`, `Name`
-- provider registry with probe-based discovery
-- decouple fetch and parse behind the interface
+- `Provider` struct with `Fetch`, `Probe`, `DisplayName`, `CategoryIDs`
+- provider registry (`provider.All`) with probe-based discovery
+- fetch and parse decoupled behind the provider abstraction
+- layout engine generalized to arbitrary provider panels
 - pure data layer. no pixels harmed.
 
 ### phase 1 — visual regression testing
 
-**status:** not started · **gates:** phases 2–4
+**status:** done · **gates:** phases 2–4
 
-before touching a single pixel of the rendering pipeline, we need a way to prove we didn't break it. screenshots don't lie.
+before touching a single pixel of the rendering pipeline, we needed a way to prove we didn't break it. ANSI strings don't lie.
 
-- deterministic seed for mock/demo data — reproducible randomization across runs. same seed, same bars, same plasma frame.
-- VHS tape-based screenshot capture at known terminal dimensions
-- pixel-level screenshot diffing with configurable tolerance
-- character-level output comparison as a complementary check
-- CI integration for automated regression detection
+- `parse.NowFunc` clock override - freeze time for deterministic output from all 5 time-dependent functions
+- golden file infrastructure with `-update` flag for regeneration
+- pure function golden tests: `RenderBar` (7 combos), `RenderPlasma`, `RenderLoadingFrame`, `generateBgGrid` determinism
+- `Model.View()` golden tests for 7 states: dual-panel, single-panel, small terminal, loading, sleeping, error, empty
+- CI workflow (`go test ./...` on push and PR)
+- character-level ANSI comparison - the rendered string IS the pixels. VHS pixel diffing deferred as unnecessary weight.
 
-you can't refactor the renderer without visual regression tests. you can't have reliable visual regression tests without deterministic output. the dependency chain writes itself.
+the safety net is in place. mutation-tested and confirmed: change one constant in the bar renderer, four tests fail with line-level diffs.
 
 ### phase 2 — cross-platform auth
 
@@ -85,8 +87,8 @@ every identified opportunity for over-engineering, scored by return on investmen
 
 | | what it is now | what it could become | roi | hubris |
 |---|---|---|---|---|
-| **providers** | hardcoded fetch+parse per provider | `Provider` interface + registry | `███████░░░` high | `██░░░░░░░░` low |
-| **visual regression** | no screenshot testing | VHS + pixel diffing + deterministic seed | `███████░░░` high | `██░░░░░░░░` low |
+| **providers** | ~~hardcoded fetch+parse~~ | `Provider` struct + registry | `██████████` done | `██░░░░░░░░` low |
+| **visual regression** | ~~no screenshot testing~~ | golden file ANSI comparison + CI | `██████████` done | `██░░░░░░░░` low |
 | **cross-platform auth** | macOS Keychain only | `CredentialProvider` chain | `███████░░░` high | `██░░░░░░░░` low |
 | **animation** | hand-rolled frame counters ×4 | `Animator` with easing library | `███████░░░` high | `█████░░░░░` med |
 | **refresh scheduling** | interleaved with the Update loop | `RefreshScheduler` state machine | `███████░░░` high | `█████░░░░░` med |
