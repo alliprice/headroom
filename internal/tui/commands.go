@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"math/rand"
 	"strings"
 	"time"
 
@@ -100,4 +101,53 @@ func sleepTickCmd() tea.Cmd {
 	return tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
 		return sleepTickMsg(t)
 	})
+}
+
+// mockFetch returns a tea.Cmd that produces a fetchResultMsg with randomized
+// mock data. Used in demo mode to avoid hitting real APIs.
+func mockFetch() tea.Cmd {
+	return func() tea.Msg {
+		now := time.Now().UTC()
+		cats := []parse.Category{
+			{
+				Key:           "five_hour",
+				Name:          "Session",
+				Utilization:   35 + rand.Float64()*30,
+				ResetsAt:      now.Add(time.Duration(1+rand.Intn(4)) * time.Hour).Format(time.RFC3339),
+				WindowSeconds: parse.WindowFiveHour,
+			},
+			{
+				Key:           "seven_day",
+				Name:          "Weekly",
+				Utilization:   55 + rand.Float64()*25,
+				ResetsAt:      now.Add(time.Duration(24+rand.Intn(120)) * time.Hour).Format(time.RFC3339),
+				WindowSeconds: parse.WindowSevenDay,
+			},
+			{
+				Key:           "codex_primary",
+				Name:          "Session",
+				Utilization:   20 + rand.Float64()*40,
+				ResetsAt:      now.Add(time.Duration(1+rand.Intn(4)) * time.Hour).Format(time.RFC3339),
+				WindowSeconds: parse.WindowFiveHour,
+			},
+			{
+				Key:           "codex_secondary",
+				Name:          "Weekly",
+				Utilization:   40 + rand.Float64()*35,
+				ResetsAt:      now.Add(time.Duration(24+rand.Intn(120)) * time.Hour).Format(time.RFC3339),
+				WindowSeconds: parse.WindowSevenDay,
+			},
+		}
+		extra := &parse.ExtraUsage{
+			MonthlyLimit: 10000,
+			UsedCredits:  3500 + rand.Float64()*3000,
+		}
+		extra.Utilization = extra.UsedCredits / extra.MonthlyLimit * 100
+
+		return fetchResultMsg{
+			categories: cats,
+			extra:      extra,
+			fetchTime:  time.Now(),
+		}
+	}
 }
