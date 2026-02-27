@@ -686,12 +686,24 @@ func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width i
 	return strings.Join(lines, "\n"), barInfos
 }
 
-// renderTrashZone renders the trash drop zone overlay.
-// When hovering is true, it uses the highlighted (red) style.
+// renderTrashZone renders a block-pixel trashcan icon.
+// When hovering is true, it renders in red; otherwise dim lavender.
 func renderTrashZone(hovering bool) string {
-	label := "🗑 drop"
+	fg := colorDim
 	if hovering {
-		return trashActiveStyle.Render(label)
+		fg = colorError
 	}
-	return trashStyle.Render(label)
+	s := lipgloss.NewStyle().Foreground(fg)
+
+	//    ▄█▄      handle
+	//  ▄█████▄    lid (wider)
+	//   █▌█▌█     body with slots
+	//   ▀▀▀▀▀    base
+	lines := []string{
+		"   " + s.Render("▄█▄"),
+		" " + s.Render("▄█████▄"),
+		"  " + s.Render("█▌█▌█"),
+		"  " + s.Render("▀▀▀▀▀"),
+	}
+	return strings.Join(lines, "\n")
 }

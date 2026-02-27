@@ -92,9 +92,9 @@ func (ls *layoutState) hideAllBarsInPanel(panelID string) {
 // positioned in the bottom-right corner of the screen (above the status bar).
 func trashZoneRect(w, h int) image.Rectangle {
 	const (
-		tzWidth  = 14 // columns
-		tzHeight = 3  // rows
-		margin   = 2  // from screen edges
+		tzWidth  = 9 // columns (matches block-pixel art width)
+		tzHeight = 4 // rows
+		margin   = 2 // from screen edges
 	)
 	x1 := w - tzWidth - margin
 	y1 := h - 1 - tzHeight - margin // h-1 = status bar row
