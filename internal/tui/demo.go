@@ -191,16 +191,10 @@ func (m Model) demoBarReorderStep() (Model, tea.Cmd) {
 	return m, demoTickCmd()
 }
 
-// demoBarTrashStep drags the last bar in the top panel to the trash zone.
+// demoBarTrashStep drags the last Claude bar (Sonnet) to the trash zone.
 func (m Model) demoBarTrashStep() (Model, tea.Cmd) {
 	if m.demoFrame == 1 {
-		topPanelID := m.layoutState.panelOrder[0]
-		var bars []barGeom
-		if topPanelID == "claude" {
-			bars = m.layout.claudeBars
-		} else {
-			bars = m.layout.codexBars
-		}
+		bars := m.layout.claudeBars
 		if len(bars) == 0 {
 			m.demoStep = demoWait4
 			m.demoFrame = 0
