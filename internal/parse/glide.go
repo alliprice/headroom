@@ -5,6 +5,10 @@ import (
 	"time"
 )
 
+// NowFunc is the clock source for all time-dependent calculations. Tests can
+// override this to freeze time; production code uses the default time.Now.
+var NowFunc = time.Now
+
 // CalcGlideSlope returns the percentage of the window that has elapsed, as a
 // value in [0, 100]. resetsAt is an ISO 8601 / RFC 3339 timestamp string.
 // Returns 0.0 if resetsAt is empty or unparseable.
@@ -18,7 +22,7 @@ func CalcGlideSlope(resetsAt string, windowSeconds int) float64 {
 		return 0.0
 	}
 
-	now := time.Now().UTC()
+	now := NowFunc().UTC()
 	remaining := t.Sub(now).Seconds()
 	elapsed := float64(windowSeconds) - remaining
 	pct := elapsed / float64(windowSeconds) * 100
@@ -36,7 +40,7 @@ func CalcGlideSlope(resetsAt string, windowSeconds int) float64 {
 // has elapsed, as a value in [0, 100]. Useful for pacing extra usage against
 // a monthly budget.
 func CalcMonthGlide() float64 {
-	now := time.Now()
+	now := NowFunc()
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
 	monthEnd := monthStart.AddDate(0, 1, 0)
 	total := monthEnd.Sub(monthStart).Seconds()
@@ -47,7 +51,7 @@ func CalcMonthGlide() float64 {
 // FormatMonthReset returns a human-readable string for when the current
 // calendar month ends (the next 1st), e.g. "Resets Mar 1".
 func FormatMonthReset() string {
-	now := time.Now()
+	now := NowFunc()
 	nextFirst := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, now.Location())
 	return "Resets " + nextFirst.Format("Jan 2")
 }
@@ -65,7 +69,7 @@ func FormatResetTime(resetsAt string) string {
 		return ""
 	}
 
-	now := time.Now().UTC()
+	now := NowFunc().UTC()
 	remaining := t.Sub(now).Seconds()
 
 	if remaining <= 0 {
@@ -108,7 +112,7 @@ func FormatUpdatedAgo(lastFetchTime *time.Time) string {
 		return "Updated: never"
 	}
 
-	elapsed := time.Since(*lastFetchTime).Seconds()
+	elapsed := NowFunc().Sub(*lastFetchTime).Seconds()
 
 	if elapsed < 5 {
 		return "Updated: just now"
