@@ -256,10 +256,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.state = stateRunning
 				m.anim.barAnimating = true
 				m.anim.barStartFrame = m.sleepFrame
-				// Populate bar targets with 500ms stagger.
-				// First bar starts at 200ms (after glide markers finish fading in).
+				// Populate bar targets — all start at 200ms (after glide markers fade in).
 				var targets []barAnimTarget
-				offset := 200
 				for _, cat := range m.categories {
 					usage := cat.Utilization
 					glide := parse.CalcGlideSlope(cat.ResetsAt, cat.WindowSeconds)
@@ -267,9 +265,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						key:     cat.Key,
 						usage:   usage,
 						glide:   glide,
-						startMs: offset,
+						startMs: 200,
 					})
-					offset += 500
 				}
 				// Add extra usage bar if present.
 				if m.extra != nil {
@@ -277,7 +274,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						key:     "extra_usage",
 						usage:   m.extra.Utilization,
 						glide:   parse.CalcMonthGlide(),
-						startMs: offset,
+						startMs: 200,
 					})
 				}
 				m.anim.barTargets = targets
