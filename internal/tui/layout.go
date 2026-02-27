@@ -5,10 +5,9 @@ import "image"
 // layoutState holds user-customizable layout: panel order, category order
 // within panels, and hidden categories. Persists across data refreshes.
 type layoutState struct {
-	panelOrder     []string        // e.g. ["claude", "codex"] — render order
-	claudeCatOrder []string        // category key order within Claude panel
-	codexCatOrder  []string        // category key order within Codex panel
-	hidden         map[string]bool // category keys hidden by drag-off
+	panelOrder []string            // e.g. ["claude", "codex"] - render order
+	catOrder   map[string][]string // provider ID → category key order
+	hidden     map[string]bool     // category keys hidden by drag-off
 }
 
 // barGeom associates a category key with its screen-space bounding rectangle.
@@ -18,27 +17,34 @@ type barGeom struct {
 	pinned bool // true = absorbs clicks but can't be dragged
 }
 
-// defaultLayoutState returns a layoutState with the given category keys in
-// their natural order, nothing hidden, and Claude on top.
-func defaultLayoutState(claudeKeys, codexKeys []string) layoutState {
-	return layoutState{
-		panelOrder:     []string{"claude", "codex"},
-		claudeCatOrder: append([]string(nil), claudeKeys...),
-		codexCatOrder:  append([]string(nil), codexKeys...),
-		hidden:         make(map[string]bool),
+// defaultLayoutState returns a layoutState with the given per-provider
+// category keys in their natural order, nothing hidden, panels in order.
+func defaultLayoutState(catsByProvider map[string][]string) layoutState {
+	panelOrder := make([]string, 0, len(catsByProvider))
+	catOrder := make(map[string][]string, len(catsByProvider))
+	for _, p := range providerOrder() {
+		if keys, ok := catsByProvider[p]; ok {
+			panelOrder = append(panelOrder, p)
+			catOrder[p] = append([]string(nil), keys...)
+		}
 	}
+	return layoutState{
+		panelOrder: panelOrder,
+		catOrder:   catOrder,
+		hidden:     make(map[string]bool),
+	}
+}
+
+// providerOrder returns provider IDs in their canonical display order.
+func providerOrder() []string {
+	return []string{"claude", "codex"}
 }
 
 // orderedCats returns the category keys for a panel in custom order,
 // excluding hidden entries.
 func (ls *layoutState) orderedCats(panel string) []string {
-	var order []string
-	switch panel {
-	case "claude":
-		order = ls.claudeCatOrder
-	case "codex":
-		order = ls.codexCatOrder
-	default:
+	order := ls.catOrder[panel]
+	if order == nil {
 		return nil
 	}
 	out := make([]string, 0, len(order))
@@ -53,9 +59,13 @@ func (ls *layoutState) orderedCats(panel string) []string {
 // syncCategories ensures that any new category keys from a data fetch are
 // appended to the end of the ordering, and stale keys are left in place
 // (they'll just never match).
-func (ls *layoutState) syncCategories(claudeKeys, codexKeys []string) {
-	ls.claudeCatOrder = mergeOrder(ls.claudeCatOrder, claudeKeys)
-	ls.codexCatOrder = mergeOrder(ls.codexCatOrder, codexKeys)
+func (ls *layoutState) syncCategories(catsByProvider map[string][]string) {
+	if ls.catOrder == nil {
+		ls.catOrder = make(map[string][]string)
+	}
+	for pid, keys := range catsByProvider {
+		ls.catOrder[pid] = mergeOrder(ls.catOrder[pid], keys)
+	}
 }
 
 // mergeOrder appends any keys in incoming that aren't already in existing.
@@ -75,15 +85,7 @@ func mergeOrder(existing, incoming []string) []string {
 
 // hideAllBarsInPanel hides every bar that belongs to the given panel.
 func (ls *layoutState) hideAllBarsInPanel(panelID string) {
-	var order []string
-	switch panelID {
-	case "claude":
-		order = ls.claudeCatOrder
-	case "codex":
-		order = ls.codexCatOrder
-	default:
-		return
-	}
+	order := ls.catOrder[panelID]
 	for _, k := range order {
 		ls.hidden[k] = true
 	}

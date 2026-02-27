@@ -4,6 +4,8 @@ import (
 	"image"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/alliprice/headroom/internal/provider"
 )
 
 // dragPhase tracks the current phase of a drag interaction.
@@ -12,7 +14,7 @@ type dragPhase int
 const (
 	dragIdle    dragPhase = iota
 	dragPending           // mousedown received, waiting for movement threshold
-	dragActive            // dragging — past movement threshold
+	dragActive            // dragging - past movement threshold
 )
 
 // dragTarget identifies what was grabbed.
@@ -30,7 +32,7 @@ type dragState struct {
 	target dragTarget
 
 	// What was grabbed.
-	panelID    string // "claude" or "codex" (for panel drag)
+	panelID    string // provider ID (for panel drag or bar's owning panel)
 	barKey     string // category key (for bar drag)
 	ghostLabel string // display name for the ghost indicator
 
@@ -56,62 +58,44 @@ func (m Model) handleMouseDown(msg tea.MouseClickMsg) (Model, tea.Cmd) {
 	}
 
 	// Hit-test category regions first (more specific), then panels.
-	// Check Claude categories.
-	for _, bg := range m.layout.claudeBars {
-		if image.Pt(x, y).In(bg.bounds) {
-			if bg.pinned {
-				return m, nil // absorb click, no drag
+	// Iterate in panel order for determinism.
+	for _, pid := range m.layoutState.panelOrder {
+		for _, bg := range m.layout.bars[pid] {
+			if image.Pt(x, y).In(bg.bounds) {
+				if bg.pinned {
+					return m, nil // absorb click, no drag
+				}
+				m.drag = dragState{
+					phase:      dragPending,
+					target:     dragTargetBar,
+					panelID:    pid,
+					barKey:     bg.key,
+					ghostLabel: m.catDisplayName(bg.key),
+					startX:     x, startY: y,
+					currX: x, currY: y,
+				}
+				return m, nil
+			}
+		}
+	}
+	// Check panels (border/empty space - anything not a bar).
+	for _, pid := range m.layoutState.panelOrder {
+		if pRect, ok := m.layout.panels[pid]; ok && image.Pt(x, y).In(pRect) {
+			p := provider.ByID(pid)
+			displayName := pid
+			if p != nil {
+				displayName = p.DisplayName
 			}
 			m.drag = dragState{
 				phase:      dragPending,
-				target:     dragTargetBar,
-				barKey:     bg.key,
-				ghostLabel: m.catDisplayName(bg.key),
+				target:     dragTargetPanel,
+				panelID:    pid,
+				ghostLabel: displayName,
 				startX:     x, startY: y,
 				currX: x, currY: y,
 			}
 			return m, nil
 		}
-	}
-	// Check Codex categories.
-	for _, bg := range m.layout.codexBars {
-		if image.Pt(x, y).In(bg.bounds) {
-			if bg.pinned {
-				return m, nil // absorb click, no drag
-			}
-			m.drag = dragState{
-				phase:      dragPending,
-				target:     dragTargetBar,
-				barKey:     bg.key,
-				ghostLabel: m.catDisplayName(bg.key),
-				startX:     x, startY: y,
-				currX: x, currY: y,
-			}
-			return m, nil
-		}
-	}
-	// Check panels (border/empty space — anything not a bar).
-	if image.Pt(x, y).In(m.layout.claudePanel) {
-		m.drag = dragState{
-			phase:      dragPending,
-			target:     dragTargetPanel,
-			panelID:    "claude",
-			ghostLabel: "Claude",
-			startX:     x, startY: y,
-			currX: x, currY: y,
-		}
-		return m, nil
-	}
-	if image.Pt(x, y).In(m.layout.codexPanel) {
-		m.drag = dragState{
-			phase:      dragPending,
-			target:     dragTargetPanel,
-			panelID:    "codex",
-			ghostLabel: "Codex",
-			startX:     x, startY: y,
-			currX: x, currY: y,
-		}
-		return m, nil
 	}
 
 	return m, nil
@@ -152,35 +136,17 @@ func (m Model) handleMouseMove(msg tea.MouseMotionMsg) (Model, tea.Cmd) {
 // liveReorderBar moves the dragged bar to the slot under the cursor,
 // causing other bars to shift like phone app icons. The target slot is
 // computed by counting non-dragged items whose midpoint is above the
-// cursor — this avoids oscillation from the dragged item's own geometry.
+// cursor - this avoids oscillation from the dragged item's own geometry.
 func (m *Model) liveReorderBar() {
-	// Find which panel owns the dragged bar.
-	var order *[]string
-	var bars []barGeom
-	for _, bg := range m.layout.claudeBars {
-		if bg.key == m.drag.barKey {
-			order = &m.layoutState.claudeCatOrder
-			bars = m.layout.claudeBars
-			break
-		}
-	}
-	if order == nil {
-		for _, bg := range m.layout.codexBars {
-			if bg.key == m.drag.barKey {
-				order = &m.layoutState.codexCatOrder
-				bars = m.layout.codexBars
-				break
-			}
-		}
-	}
+	pid := m.drag.panelID
+	bars := m.layout.bars[pid]
+	order := m.layoutState.catOrder[pid]
 
 	if order == nil || len(bars) < 2 {
 		return
 	}
 
 	// Count how many non-dragged items have their midpoint above the cursor.
-	// This gives the insertion slot without interference from the dragged
-	// item's own geometry.
 	slot := 0
 	for _, bg := range bars {
 		if bg.key == m.drag.barKey {
@@ -192,9 +158,9 @@ func (m *Model) liveReorderBar() {
 		}
 	}
 
-	newOrder := moveToSlot(*order, m.layoutState.hidden, m.drag.barKey, slot)
+	newOrder := moveToSlot(order, m.layoutState.hidden, m.drag.barKey, slot)
 	if newOrder != nil {
-		*order = newOrder
+		m.layoutState.catOrder[pid] = newOrder
 	}
 }
 
@@ -206,8 +172,24 @@ func (m *Model) liveReorderPanel() {
 	}
 
 	// Compute midpoint of the total panel area (stable regardless of order).
-	areaMinY := min(m.layout.claudePanel.Min.Y, m.layout.codexPanel.Min.Y)
-	areaMaxY := max(m.layout.claudePanel.Max.Y, m.layout.codexPanel.Max.Y)
+	var areaMinY, areaMaxY int
+	first := true
+	for _, pid := range m.layoutState.panelOrder {
+		if pRect, ok := m.layout.panels[pid]; ok {
+			if first {
+				areaMinY = pRect.Min.Y
+				areaMaxY = pRect.Max.Y
+				first = false
+			} else {
+				if pRect.Min.Y < areaMinY {
+					areaMinY = pRect.Min.Y
+				}
+				if pRect.Max.Y > areaMaxY {
+					areaMaxY = pRect.Max.Y
+				}
+			}
+		}
+	}
 	midY := (areaMinY + areaMaxY) / 2
 
 	// Find current position of the dragged panel.

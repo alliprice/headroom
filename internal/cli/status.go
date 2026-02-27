@@ -3,79 +3,52 @@ package cli
 import (
 	"fmt"
 
-	"github.com/alliprice/headroom/internal/auth"
-	"github.com/alliprice/headroom/internal/fetch"
 	"github.com/alliprice/headroom/internal/parse"
+	"github.com/alliprice/headroom/internal/provider"
 )
 
-// CombineCategories merges Claude and Codex categories into display order.
-// When both sources are present, names are prefixed ("Claude session", "Codex session",
-// etc.) for clarity. The ordering is: claude core (five_hour, seven_day) + codex +
-// claude extras (everything else).
-func CombineCategories(claudeCats, codexCats []parse.Category) []parse.Category {
-	if len(codexCats) > 0 {
-		// Rename Claude categories to carry the "Claude" prefix.
-		for i := range claudeCats {
-			switch claudeCats[i].Key {
-			case "five_hour":
-				claudeCats[i].Name = "Claude session"
-			case "seven_day":
-				claudeCats[i].Name = "Claude weekly"
-			case "seven_day_opus":
-				claudeCats[i].Name = "Claude Opus (weekly)"
-			}
-		}
-		// Rename Codex categories to carry the "Codex" prefix.
-		for i := range codexCats {
-			switch codexCats[i].Key {
-			case "codex_primary":
-				codexCats[i].Name = "Codex session"
-			case "codex_secondary":
-				codexCats[i].Name = "Codex weekly"
-			}
-		}
-	}
-
-	coreKeys := map[string]bool{"five_hour": true, "seven_day": true}
-
-	var core, extras []parse.Category
-	for _, c := range claudeCats {
-		if coreKeys[c.Key] {
-			core = append(core, c)
-		} else {
-			extras = append(extras, c)
-		}
-	}
-
-	result := make([]parse.Category, 0, len(core)+len(codexCats)+len(extras))
-	result = append(result, core...)
-	result = append(result, codexCats...)
-	result = append(result, extras...)
-	return result
-}
-
-// RunStatus fetches usage data from Claude (and optionally Codex) and prints
-// a human-readable budget-headroom summary to stdout.
+// RunStatus fetches usage data from all providers and prints a human-readable
+// budget-headroom summary to stdout.
 func RunStatus() error {
-	token, err := auth.GetAccessToken()
-	if err != nil {
-		return err
+	var allCats []parse.Category
+	var extra *parse.ExtraUsage
+	hasMultipleProviders := false
+
+	// Probe and fetch from all providers.
+	available := make(map[string]bool)
+	for _, p := range provider.All {
+		if p.Probe == nil || p.Probe() {
+			available[p.ID] = true
+		}
 	}
 
-	data, err := fetch.FetchClaude(token)
-	if err != nil {
-		return err
+	providerCount := 0
+	for _, p := range provider.All {
+		if !available[p.ID] {
+			continue
+		}
+		res, _, err := p.Fetch()
+		if err != nil {
+			return err
+		}
+		if res == nil {
+			continue
+		}
+		providerCount++
+		allCats = append(allCats, res.Categories...)
+		if res.Extra != nil {
+			extra = res.Extra
+		}
 	}
 
-	claudeCats, extraUsage := parse.ParseClaude(data)
-
-	var codexCats []parse.Category
-	codexData, codexErr := fetch.FetchCodex()
-	if codexErr == nil && codexData != nil {
-		codexCats = parse.ParseCodex(codexData)
+	if providerCount > 1 {
+		hasMultipleProviders = true
 	}
 
-	allCats := CombineCategories(claudeCats, codexCats)
+	// Prefix names when multiple providers present.
+	if hasMultipleProviders {
+		allCats = prefixCategoryNames(allCats)
+	}
 
 	for _, cat := range allCats {
 		usagePct := cat.Utilization
@@ -96,10 +69,10 @@ func RunStatus() error {
 		fmt.Printf("%s: %.0f%% used | %s | %s\n", cat.Name, usagePct, pace, resetStr)
 	}
 
-	if extraUsage != nil {
-		usagePct := extraUsage.Utilization
-		limitDollars := extraUsage.MonthlyLimit / 100
-		usedDollars := extraUsage.UsedCredits / 100
+	if extra != nil {
+		usagePct := extra.Utilization
+		limitDollars := extra.MonthlyLimit / 100
+		usedDollars := extra.UsedCredits / 100
 
 		var status string
 		if usagePct >= 80 {
@@ -113,4 +86,40 @@ func RunStatus() error {
 	}
 
 	return nil
+}
+
+// prefixCategoryNames adds provider prefixes to category names when multiple
+// providers are present (e.g. "Session" → "Claude session").
+func prefixCategoryNames(cats []parse.Category) []parse.Category {
+	for i := range cats {
+		p := providerForKey(cats[i].Key)
+		if p != nil {
+			cats[i].Name = p.DisplayName + " " + lowercaseFirst(cats[i].Name)
+		}
+	}
+	return cats
+}
+
+// providerForKey returns the provider that owns the given category key.
+func providerForKey(key string) *provider.Provider {
+	for i := range provider.All {
+		for _, k := range provider.All[i].CategoryIDs {
+			if k == key {
+				return &provider.All[i]
+			}
+		}
+	}
+	return nil
+}
+
+// lowercaseFirst lowercases the first character of s.
+func lowercaseFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	b := []byte(s)
+	if b[0] >= 'A' && b[0] <= 'Z' {
+		b[0] += 'a' - 'A'
+	}
+	return string(b)
 }

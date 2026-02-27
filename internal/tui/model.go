@@ -7,8 +7,8 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/alliprice/headroom/internal/fetch"
 	"github.com/alliprice/headroom/internal/parse"
+	"github.com/alliprice/headroom/internal/provider"
 )
 
 type state int
@@ -46,10 +46,11 @@ type animState struct {
 // Model is the Bubble Tea model for the headroom TUI.
 type Model struct {
 	// Data
-	categories []parse.Category
-	extra      *parse.ExtraUsage
-	errorMsg   string
-	isAuthErr  bool
+	categories    []parse.Category
+	extra         *parse.ExtraUsage
+	providerExtra map[string]*parse.ExtraUsage // provider ID → extra usage
+	errorMsg      string
+	isAuthErr     bool
 
 	// Timing
 	lastFetchTime    *time.Time // nil = never fetched
@@ -73,8 +74,8 @@ type Model struct {
 	inputMode inputMode
 	inputBuf  string
 
-	// Capability
-	codexAvailable bool
+	// Provider availability
+	available map[string]bool
 
 	// Help
 	keys keyMap
@@ -94,7 +95,7 @@ type Model struct {
 	bgWidth  int
 	bgHeight int
 
-	// Layout geometry (written by View, read by drag handlers in Phase 2)
+	// Layout geometry (written by View, read by drag handlers)
 	layout *layoutInfo
 
 	// Layout customization (panel/bar ordering, hidden bars)
@@ -106,12 +107,10 @@ type Model struct {
 
 // layoutInfo tracks screen-space geometry of UI elements for hit-testing.
 type layoutInfo struct {
-	claudePanel image.Rectangle
-	codexPanel  image.Rectangle
-	statusBar   image.Rectangle
-	claudeBars  []barGeom
-	codexBars   []barGeom
-	trashZone   image.Rectangle
+	panels    map[string]image.Rectangle // provider ID → panel bounds
+	bars      map[string][]barGeom       // provider ID → bar geometry
+	statusBar image.Rectangle
+	trashZone image.Rectangle
 }
 
 // NewModel creates a new headroom TUI model.
@@ -129,7 +128,12 @@ func NewModel(debugSleep, demo bool) Model {
 		debugSleep:     debugSleep,
 		demoMode:       demo,
 		keys:           newKeyMap(),
-		layout:         &layoutInfo{},
+		available:      make(map[string]bool),
+		providerExtra:  make(map[string]*parse.ExtraUsage),
+		layout: &layoutInfo{
+			panels: make(map[string]image.Rectangle),
+			bars:   make(map[string][]barGeom),
+		},
 	}
 }
 
@@ -141,29 +145,38 @@ func (m Model) Init() tea.Cmd {
 	}
 
 	if m.demoMode {
-		m.codexAvailable = true
+		for _, p := range provider.All {
+			m.available[p.ID] = true
+		}
 		return tea.Batch(mockFetch(), tea.RequestWindowSize, plasmaTickCmd())
 	}
 
-	// Probe for Codex availability; start plasma tick for loading animation
+	// Probe for provider availability; start plasma tick for loading animation
 	return tea.Batch(
-		m.probeCodex(),
+		probeProviders(),
 		tea.RequestWindowSize,
 		plasmaTickCmd(),
 	)
 }
 
-// probeCodex checks if Codex is available, then triggers the initial fetch.
-func (m Model) probeCodex() tea.Cmd {
+// probeProviders checks which providers with non-nil Probe are available.
+func probeProviders() tea.Cmd {
 	return func() tea.Msg {
-		data, _ := fetch.FetchCodex()
-		return codexProbeMsg{available: data != nil}
+		avail := make(map[string]bool)
+		for _, p := range provider.All {
+			if p.Probe == nil {
+				avail[p.ID] = true
+			} else {
+				avail[p.ID] = p.Probe()
+			}
+		}
+		return probeResultMsg{available: avail}
 	}
 }
 
-// codexProbeMsg is sent after probing for Codex availability.
-type codexProbeMsg struct {
-	available bool
+// probeResultMsg is sent after probing all providers for availability.
+type probeResultMsg struct {
+	available map[string]bool
 }
 
 // Update implements tea.Model.
@@ -188,13 +201,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.hasFocus = false
 		return m, nil
 
-	case codexProbeMsg:
-		m.codexAvailable = msg.available
-		return m, tea.Batch(doFetch(m.codexAvailable), tickCmd())
+	case probeResultMsg:
+		m.available = msg.available
+		return m, tea.Batch(doFetch(m.available), tickCmd())
 
 	case fetchResultMsg:
 		m.categories = msg.categories
 		m.extra = msg.extra
+		m.providerExtra = msg.providerExtra
 		m.errorMsg = msg.errorMsg
 		m.isAuthErr = msg.isAuthErr
 		m.lastFetchAttempt = time.Now()
@@ -203,24 +217,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.lastFetchTime = &t
 		}
 		if m.state == stateLoading {
-			// Signal data is ready but don't transition yet — wait for frame ≥40
+			// Signal data is ready but don't transition yet - wait for frame ≥40
 			// in the sleepTickMsg handler to enforce the minimum 4s loading time.
 			m.anim.dataReady = true
 			return m, nil
 		}
 		// Normal running state: sync layout.
-		var claudeKeys, codexKeys []string
-		for _, c := range m.categories {
-			if len(c.Key) > 6 && c.Key[:6] == "codex_" {
-				codexKeys = append(codexKeys, c.Key)
-			} else {
-				claudeKeys = append(claudeKeys, c.Key)
-			}
-		}
+		catsByProvider := m.groupCatsByProvider()
 		if len(m.layoutState.panelOrder) == 0 {
-			m.layoutState = defaultLayoutState(claudeKeys, codexKeys)
+			m.layoutState = defaultLayoutState(catsByProvider)
 		} else {
-			m.layoutState.syncCategories(claudeKeys, codexKeys)
+			m.layoutState.syncCategories(catsByProvider)
 		}
 		return m, nil
 
@@ -246,7 +253,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				interval = parse.RefreshUnfocused
 			}
 			if now.Sub(*m.lastFetchTime).Seconds() >= float64(interval) {
-				cmds = append(cmds, doFetch(m.codexAvailable))
+				cmds = append(cmds, doFetch(m.available))
 			}
 		} else if m.errorMsg != "" {
 			var retryInterval int
@@ -256,7 +263,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				retryInterval = parse.RefreshFocused
 			}
 			if now.Sub(m.lastFetchAttempt).Seconds() >= float64(retryInterval) {
-				cmds = append(cmds, doFetch(m.codexAvailable))
+				cmds = append(cmds, doFetch(m.available))
 			}
 		}
 
@@ -273,7 +280,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.state = stateRunning
 				m.anim.barAnimating = true
 				m.anim.barStartFrame = m.sleepFrame
-				// Populate bar targets — all start at 200ms (after glide markers fade in).
+				// Populate bar targets - all start at 200ms (after glide markers fade in).
 				var targets []barAnimTarget
 				for _, cat := range m.categories {
 					usage := cat.Utilization
@@ -296,18 +303,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.anim.barTargets = targets
 				// Sync layout state.
-				var claudeKeys, codexKeys []string
-				for _, c := range m.categories {
-					if len(c.Key) > 6 && c.Key[:6] == "codex_" {
-						codexKeys = append(codexKeys, c.Key)
-					} else {
-						claudeKeys = append(claudeKeys, c.Key)
-					}
-				}
+				catsByProvider := m.groupCatsByProvider()
 				if len(m.layoutState.panelOrder) == 0 {
-					m.layoutState = defaultLayoutState(claudeKeys, codexKeys)
+					m.layoutState = defaultLayoutState(catsByProvider)
 				} else {
-					m.layoutState.syncCategories(claudeKeys, codexKeys)
+					m.layoutState.syncCategories(catsByProvider)
 				}
 				return m, plasmaTickCmd() // keep ticking for bar animation
 			}
@@ -399,11 +399,11 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.hasFocus = true
 		m.lastFocusTime = time.Now()
 		// If this is the first wake (debug sleep), run the full init sequence:
-		// probe codex availability and start the periodic tick timer.
+		// probe provider availability and start the periodic tick timer.
 		if m.lastFetchTime == nil && m.errorMsg == "" {
-			return m, tea.Batch(m.probeCodex(), tickCmd())
+			return m, tea.Batch(probeProviders(), tickCmd())
 		}
-		return m, doFetch(m.codexAvailable)
+		return m, doFetch(m.available)
 	}
 
 	// Normal mode
@@ -411,21 +411,13 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Quit):
 		return m, tea.Quit
 	case key.Matches(msg, m.keys.Refresh):
-		return m, doFetch(m.codexAvailable)
+		return m, doFetch(m.available)
 	case key.Matches(msg, m.keys.Interval):
 		m.inputMode = inputInterval
 		m.inputBuf = ""
 		return m, nil
 	case key.Matches(msg, m.keys.Reset):
-		var claudeKeys, codexKeys []string
-		for _, c := range m.categories {
-			if len(c.Key) > 6 && c.Key[:6] == "codex_" {
-				codexKeys = append(codexKeys, c.Key)
-			} else {
-				claudeKeys = append(claudeKeys, c.Key)
-			}
-		}
-		m.layoutState = defaultLayoutState(claudeKeys, codexKeys)
+		m.layoutState = defaultLayoutState(m.groupCatsByProvider())
 		return m, nil
 	}
 
@@ -477,5 +469,29 @@ func (m Model) handleIntervalInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+}
+
+// groupCatsByProvider builds a provider ID → category keys map from the
+// current categories using the provider registry. Categories whose keys
+// match a provider's CategoryIDs go to that provider; unmatched keys go
+// to the first provider (Claude).
+func (m Model) groupCatsByProvider() map[string][]string {
+	result := make(map[string][]string)
+	// Build a lookup: category key → provider ID.
+	keyToProvider := make(map[string]string)
+	for _, p := range provider.All {
+		for _, k := range p.CategoryIDs {
+			keyToProvider[k] = p.ID
+		}
+	}
+	for _, c := range m.categories {
+		pid, ok := keyToProvider[c.Key]
+		if !ok {
+			// Default to first provider for unknown keys.
+			pid = provider.All[0].ID
+		}
+		result[pid] = append(result[pid], c.Key)
+	}
+	return result
 }
 

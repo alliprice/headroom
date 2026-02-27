@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/alliprice/headroom/internal/parse"
+	"github.com/alliprice/headroom/internal/provider"
 )
 
 // barAnimFunc is a callback that returns animated (usage, glide, glideOpacity)
@@ -61,21 +62,21 @@ func (m Model) View() tea.View {
 		catMap[c.Key] = c
 	}
 
-	// Get ordered, visible category keys for each panel.
-	claudeKeys := m.layoutState.orderedCats("claude")
-	codexKeys := m.layoutState.orderedCats("codex")
-
-	// Resolve keys to category structs.
-	var claudeCats, codexCats []parse.Category
-	for _, k := range claudeKeys {
-		if c, ok := catMap[k]; ok {
-			claudeCats = append(claudeCats, c)
-		}
+	// Get ordered, visible category keys and resolved structs for each panel.
+	type panelCats struct {
+		pid  string
+		cats []parse.Category
 	}
-	for _, k := range codexKeys {
-		if c, ok := catMap[k]; ok {
-			codexCats = append(codexCats, c)
+	var allPanelCats []panelCats
+	for _, pid := range m.layoutState.panelOrder {
+		keys := m.layoutState.orderedCats(pid)
+		var cats []parse.Category
+		for _, k := range keys {
+			if c, ok := catMap[k]; ok {
+				cats = append(cats, c)
+			}
 		}
+		allPanelCats = append(allPanelCats, panelCats{pid, cats})
 	}
 
 	// Status bar (always rendered at the bottom).
@@ -97,9 +98,13 @@ func (m Model) View() tea.View {
 		return newView(content)
 	}
 
-	// Small terminal fallback — no borders.
+	// Small terminal fallback - no borders.
 	if w < 40 || h < 12 {
-		content = m.renderFlat(claudeCats, codexCats, statusBar, errorLine)
+		var flatCats []parse.Category
+		for _, pc := range allPanelCats {
+			flatCats = append(flatCats, pc.cats...)
+		}
+		content = m.renderFlatGeneric(flatCats, statusBar, errorLine)
 		return newView(content)
 	}
 
@@ -153,35 +158,35 @@ func (m Model) View() tea.View {
 
 	// Determine panel rendering order.
 	type panelDef struct {
+		pid   string
 		name  string
 		cats  []parse.Category
 		extra *parse.ExtraUsage
 	}
 	var panelDefs []panelDef
-	for _, pid := range m.layoutState.panelOrder {
-		switch pid {
-		case "claude":
-			if len(claudeCats) > 0 {
-				extra := m.extra
-				if m.layoutState.hidden["extra_usage"] {
-					extra = nil
-				}
-				panelDefs = append(panelDefs, panelDef{"Claude", claudeCats, extra})
+	for _, pc := range allPanelCats {
+		if len(pc.cats) > 0 {
+			p := provider.ByID(pc.pid)
+			displayName := pc.pid
+			if p != nil {
+				displayName = p.DisplayName
 			}
-		case "codex":
-			if len(codexCats) > 0 {
-				panelDefs = append(panelDefs, panelDef{"Codex", codexCats, nil})
+			var extra *parse.ExtraUsage
+			if e := m.providerExtra[pc.pid]; e != nil && !m.layoutState.hidden["extra_usage"] {
+				extra = e
 			}
+			panelDefs = append(panelDefs, panelDef{pc.pid, displayName, pc.cats, extra})
 		}
 	}
 
 	// Handle all-hidden case.
 	if len(panelDefs) == 0 && len(m.categories) > 0 {
-		panelDefs = append(panelDefs, panelDef{"headroom", nil, nil})
+		panelDefs = append(panelDefs, panelDef{"headroom", "headroom", nil, nil})
 	}
 
 	var panels string
 	var panelBarInfos [][]barLineInfo // per-panel bar line info
+	var panelPIDs []string            // provider IDs in render order
 	var partHeights []int             // actual rendered height of each panel
 	eachHeight := 0
 	if len(panelDefs) > 1 {
@@ -191,7 +196,7 @@ func (m Model) View() tea.View {
 			var content string
 			var barInfos []barLineInfo
 			if len(pd.cats) == 0 {
-				content = dimStyle.Render("All bars hidden — press ") + titleStyle.Render("0") + dimStyle.Render(" to restore")
+				content = dimStyle.Render("All bars hidden - press ") + titleStyle.Render("0") + dimStyle.Render(" to restore")
 			} else {
 				content, barInfos = renderPanelWithGeom(pd.cats, pd.extra, panelContentWidth, eachHeight, animFn)
 			}
@@ -200,6 +205,7 @@ func (m Model) View() tea.View {
 			parts = append(parts, p)
 			partHeights = append(partHeights, lipgloss.Height(p))
 			panelBarInfos = append(panelBarInfos, barInfos)
+			panelPIDs = append(panelPIDs, pd.pid)
 		}
 		panels = lipgloss.JoinVertical(lipgloss.Left, parts[0], "", parts[1])
 	} else if len(panelDefs) == 1 {
@@ -207,13 +213,14 @@ func (m Model) View() tea.View {
 		var content string
 		var barInfos []barLineInfo
 		if len(pd.cats) == 0 {
-			content = dimStyle.Render("All bars hidden — press ") + titleStyle.Render("0") + dimStyle.Render(" to restore")
+			content = dimStyle.Render("All bars hidden - press ") + titleStyle.Render("0") + dimStyle.Render(" to restore")
 		} else {
 			content, barInfos = renderPanelWithGeom(pd.cats, pd.extra, panelContentWidth, panelAreaHeight-vFrame, animFn)
 		}
 		panels = panelStyle.Width(widthArg).Render(content)
 		panels = embedBorderTitle(panels, pd.name, panelWidth)
 		panelBarInfos = append(panelBarInfos, barInfos)
+		panelPIDs = append(panelPIDs, pd.pid)
 	} else {
 		// No panels at all (no data).
 		panels = ""
@@ -261,11 +268,14 @@ func (m Model) View() tea.View {
 			contentOffX := panelX + borderLeft + paddingLeft
 			contentOffY := borderTop + paddingTop
 
-			m.layout.claudeBars = nil
-			m.layout.codexBars = nil
+			// Reset bar geometry for all panels.
+			for pid := range m.layout.bars {
+				m.layout.bars[pid] = nil
+			}
 
 			if len(panelDefs) > 1 {
-				for pi, pd := range panelDefs {
+				for pi := range panelDefs {
+					pid := panelPIDs[pi]
 					var pyOff int
 					if pi == 0 {
 						pyOff = panelY
@@ -279,43 +289,27 @@ func (m Model) View() tea.View {
 							absY := pyOff + contentOffY + bi.relY
 							r := image.Rect(contentOffX, absY, contentOffX+panelContentWidth, absY+bi.height)
 							bg := barGeom{key: bi.key, bounds: r, pinned: bi.pinned}
-							if pd.name == "Claude" {
-								m.layout.claudeBars = append(m.layout.claudeBars, bg)
-							} else {
-								m.layout.codexBars = append(m.layout.codexBars, bg)
-							}
+							m.layout.bars[pid] = append(m.layout.bars[pid], bg)
 						}
 					}
 
 					// Panel bounds (use actual rendered height).
 					pH := partHeights[pi]
 					pRect := image.Rect(panelX, pyOff, panelX+panelVisualWidth, pyOff+pH)
-					if pd.name == "Claude" {
-						m.layout.claudePanel = pRect
-					} else {
-						m.layout.codexPanel = pRect
-					}
+					m.layout.panels[pid] = pRect
 				}
 			} else if len(panelDefs) == 1 {
-				pd := panelDefs[0]
+				pid := panelPIDs[0]
 				pH := lipgloss.Height(panels)
 				pRect := image.Rect(panelX, panelY, panelX+panelVisualWidth, panelY+pH)
-				if pd.name == "Claude" {
-					m.layout.claudePanel = pRect
-				} else {
-					m.layout.codexPanel = pRect
-				}
+				m.layout.panels[pid] = pRect
 
 				if len(panelBarInfos) > 0 {
 					for _, bi := range panelBarInfos[0] {
 						absY := panelY + contentOffY + bi.relY
 						r := image.Rect(contentOffX, absY, contentOffX+panelContentWidth, absY+bi.height)
 						bg := barGeom{key: bi.key, bounds: r, pinned: bi.pinned}
-						if pd.name == "Claude" {
-							m.layout.claudeBars = append(m.layout.claudeBars, bg)
-						} else {
-							m.layout.codexBars = append(m.layout.codexBars, bg)
-						}
+						m.layout.bars[pid] = append(m.layout.bars[pid], bg)
 					}
 				}
 			}
@@ -335,7 +329,7 @@ func (m Model) View() tea.View {
 			comp.AddLayers(errorLayer)
 		}
 
-		// Ghost layer during active drag — bordered card following the cursor.
+		// Ghost layer during active drag - bordered card following the cursor.
 		if m.drag.phase == dragActive && m.drag.ghostLabel != "" {
 			ghostStyle := lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
@@ -455,7 +449,7 @@ func renderPanel(cats []parse.Category, extra *parse.ExtraUsage, width int, maxH
 		used += max(n-1, 0)
 	}
 
-	// Extra usage (Claude panel only, shown when space allows).
+	// Extra usage (shown when space allows).
 	showExtra := false
 	if extra != nil {
 		cost := 1 // bar
@@ -555,12 +549,11 @@ func embedBorderTitle(rendered, title string, width int) string {
 	return strings.Join(lines, "\n")
 }
 
-// renderFlat renders a simplified layout with no borders, used when the
+// renderFlatGeneric renders a simplified layout with no borders, used when the
 // terminal is too small to fit the full panel layout (width < 40 or height < 12).
-func (m Model) renderFlat(claudeCats, codexCats []parse.Category, statusBar, errorLine string) string {
+func (m Model) renderFlatGeneric(allCats []parse.Category, statusBar, errorLine string) string {
 	w := m.width
 	h := m.height
-	allCats := append(claudeCats, codexCats...)
 
 	var lines []string
 	if errorLine != "" {

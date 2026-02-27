@@ -2,87 +2,62 @@ package tui
 
 import (
 	"math/rand"
-	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/alliprice/headroom/internal/auth"
-	"github.com/alliprice/headroom/internal/fetch"
 	"github.com/alliprice/headroom/internal/parse"
+	"github.com/alliprice/headroom/internal/provider"
 )
 
-// doFetch returns a tea.Cmd that fetches both Claude and Codex data and
-// combines them into a single fetchResultMsg.
-func doFetch(codexAvailable bool) tea.Cmd {
+// doFetch returns a tea.Cmd that fetches data from all available providers
+// and combines them into a single fetchResultMsg.
+func doFetch(available map[string]bool) tea.Cmd {
 	return func() tea.Msg {
 		var (
-			claudeCats  []parse.Category
-			claudeExtra *parse.ExtraUsage
-			codexCats   []parse.Category
-			errMsg      string
-			isAuth      bool
+			allCats       []parse.Category
+			providerExtra = make(map[string]*parse.ExtraUsage)
+			extra         *parse.ExtraUsage
+			errMsg        string
+			isAuth        bool
 		)
 
-		// Fetch Claude
-		token, err := auth.GetAccessToken()
-		if err != nil {
-			errMsg = err.Error()
-			isAuth = true
-		} else {
-			data, err := fetch.FetchClaude(token)
-			if err != nil {
-				errMsg = err.Error()
-				isAuth = strings.Contains(errMsg, "expired") || strings.Contains(errMsg, "authenticate")
-			} else {
-				claudeCats, claudeExtra = parse.ParseClaude(data)
+		for _, p := range provider.All {
+			if !available[p.ID] {
+				continue
 			}
-		}
 
-		// Fetch Codex
-		if codexAvailable {
-			data, err := fetch.FetchCodex()
+			res, authErr, err := p.Fetch()
 			if err != nil {
-				// Codex error is non-fatal; append to error message
 				if errMsg != "" {
 					errMsg += "; " + err.Error()
 				} else {
 					errMsg = err.Error()
 				}
-			} else if data != nil {
-				codexCats = parse.ParseCodex(data)
-			}
-		}
-
-		// Combine: rename when both present, order as claude core + codex + claude extras
-		if len(codexCats) > 0 {
-			for i := range codexCats {
-				switch codexCats[i].Key {
-				case "codex_primary":
-					codexCats[i].Name = "Session"
-				case "codex_secondary":
-					codexCats[i].Name = "Weekly"
+				if authErr {
+					isAuth = true
 				}
+				continue
 			}
-		}
+			if res == nil {
+				continue
+			}
 
-		var claudeCore, claudeExtras []parse.Category
-		for _, c := range claudeCats {
-			if c.Key == "five_hour" || c.Key == "seven_day" {
-				claudeCore = append(claudeCore, c)
-			} else {
-				claudeExtras = append(claudeExtras, c)
+			allCats = append(allCats, res.Categories...)
+			if res.Extra != nil {
+				providerExtra[p.ID] = res.Extra
+				extra = res.Extra // keep last non-nil for backward compat
 			}
 		}
-		all := append(append(claudeCore, codexCats...), claudeExtras...)
 
 		msg := fetchResultMsg{
-			categories: all,
-			extra:      claudeExtra,
-			errorMsg:   errMsg,
-			isAuthErr:  isAuth,
+			categories:    allCats,
+			extra:         extra,
+			providerExtra: providerExtra,
+			errorMsg:      errMsg,
+			isAuthErr:     isAuth,
 		}
-		if len(all) > 0 {
+		if len(allCats) > 0 {
 			msg.fetchTime = time.Now()
 		}
 		return msg
@@ -145,9 +120,10 @@ func mockFetch() tea.Cmd {
 		extra.Utilization = extra.UsedCredits / extra.MonthlyLimit * 100
 
 		return fetchResultMsg{
-			categories: cats,
-			extra:      extra,
-			fetchTime:  time.Now(),
+			categories:    cats,
+			extra:         extra,
+			providerExtra: map[string]*parse.ExtraUsage{"claude": extra},
+			fetchTime:     time.Now(),
 		}
 	}
 }
