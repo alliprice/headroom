@@ -101,37 +101,13 @@ func (m Model) updateDemo() (Model, tea.Cmd) {
 
 // demoPanelSwapStep drags the top panel downward past the midpoint to trigger a swap.
 func (m Model) demoPanelSwapStep() (Model, tea.Cmd) {
-	if len(m.layoutState.panelOrder) < 2 {
-		// No second panel — skip to next step.
-		m.demoStep = demoWait2
-		m.demoFrame = 0
-		return m, demoTickCmd()
-	}
-
-	topPanelID := m.layoutState.panelOrder[0]
-
 	if m.demoFrame == 1 {
-		// Start: grab the top panel center.
-		var panelRect image.Rectangle
-		if topPanelID == "claude" {
-			panelRect = m.layout.claudePanel
-		} else {
-			panelRect = m.layout.codexPanel
+		if len(m.layoutState.panelOrder) < 2 {
+			m.demoStep = demoWait2
+			m.demoFrame = 0
+			return m, demoTickCmd()
 		}
-		start := rectCenter(panelRect)
-		m.drag = dragState{
-			phase:      dragActive,
-			target:     dragTargetPanel,
-			panelID:    topPanelID,
-			ghostLabel: m.panelDisplayName(topPanelID),
-			startX:     start.X, startY: start.Y,
-			currX: start.X, currY: start.Y,
-		}
-		return m, demoTickCmd()
-	}
-
-	if m.demoFrame <= demoAnimDuration {
-		// Animate: move cursor from top panel center toward bottom panel center.
+		topPanelID := m.layoutState.panelOrder[0]
 		var topRect, botRect image.Rectangle
 		if topPanelID == "claude" {
 			topRect = m.layout.claudePanel
@@ -140,16 +116,29 @@ func (m Model) demoPanelSwapStep() (Model, tea.Cmd) {
 			topRect = m.layout.codexPanel
 			botRect = m.layout.claudePanel
 		}
-		startPt := rectCenter(topRect)
-		endPt := rectCenter(botRect)
+		start := rectCenter(topRect)
+		end := rectCenter(botRect)
+		m.drag = dragState{
+			phase:      dragActive,
+			target:     dragTargetPanel,
+			panelID:    topPanelID,
+			ghostLabel: m.panelDisplayName(topPanelID),
+			startX:     start.X, startY: start.Y,
+			currX: start.X, currY: start.Y,
+		}
+		m.demoEndX = end.X
+		m.demoEndY = end.Y
+		return m, demoTickCmd()
+	}
+
+	if m.demoFrame <= demoAnimDuration {
 		t := easeOutCubic(float64(m.demoFrame-1) / float64(demoAnimDuration-1))
-		m.drag.currX = startPt.X + int(t*float64(endPt.X-startPt.X))
-		m.drag.currY = startPt.Y + int(t*float64(endPt.Y-startPt.Y))
+		m.drag.currX = m.drag.startX + int(t*float64(m.demoEndX-m.drag.startX))
+		m.drag.currY = m.drag.startY + int(t*float64(m.demoEndY-m.drag.startY))
 		m.liveReorderPanel()
 		return m, demoTickCmd()
 	}
 
-	// Done: release.
 	m.drag = dragState{}
 	m.demoStep = demoWait2
 	m.demoFrame = 0
@@ -158,27 +147,23 @@ func (m Model) demoPanelSwapStep() (Model, tea.Cmd) {
 
 // demoBarReorderStep drags the second bar in the top panel to the first slot.
 func (m Model) demoBarReorderStep() (Model, tea.Cmd) {
-	// Pick the top panel's bars.
-	topPanelID := m.layoutState.panelOrder[0]
-	var bars []barGeom
-	if topPanelID == "claude" {
-		bars = m.layout.claudeBars
-	} else {
-		bars = m.layout.codexBars
-	}
-
-	if len(bars) < 2 {
-		// Not enough bars — skip.
-		m.demoStep = demoWait3
-		m.demoFrame = 0
-		return m, demoTickCmd()
-	}
-
-	srcBar := bars[1] // second bar
-	dstBar := bars[0] // first bar
-
 	if m.demoFrame == 1 {
+		topPanelID := m.layoutState.panelOrder[0]
+		var bars []barGeom
+		if topPanelID == "claude" {
+			bars = m.layout.claudeBars
+		} else {
+			bars = m.layout.codexBars
+		}
+		if len(bars) < 2 {
+			m.demoStep = demoWait3
+			m.demoFrame = 0
+			return m, demoTickCmd()
+		}
+		srcBar := bars[1]
+		dstBar := bars[0]
 		start := rectCenter(srcBar.bounds)
+		end := image.Pt(rectCenter(dstBar.bounds).X, dstBar.bounds.Min.Y)
 		m.drag = dragState{
 			phase:      dragActive,
 			target:     dragTargetBar,
@@ -187,20 +172,19 @@ func (m Model) demoBarReorderStep() (Model, tea.Cmd) {
 			startX:     start.X, startY: start.Y,
 			currX: start.X, currY: start.Y,
 		}
+		m.demoEndX = end.X
+		m.demoEndY = end.Y
 		return m, demoTickCmd()
 	}
 
 	if m.demoFrame <= demoAnimDuration {
-		startPt := rectCenter(srcBar.bounds)
-		endPt := rectCenter(dstBar.bounds)
 		t := easeOutCubic(float64(m.demoFrame-1) / float64(demoAnimDuration-1))
-		m.drag.currX = startPt.X + int(t*float64(endPt.X-startPt.X))
-		m.drag.currY = startPt.Y + int(t*float64(endPt.Y-startPt.Y))
+		m.drag.currX = m.drag.startX + int(t*float64(m.demoEndX-m.drag.startX))
+		m.drag.currY = m.drag.startY + int(t*float64(m.demoEndY-m.drag.startY))
 		m.liveReorderBar()
 		return m, demoTickCmd()
 	}
 
-	// Done: release.
 	m.drag = dragState{}
 	m.demoStep = demoWait3
 	m.demoFrame = 0
@@ -209,26 +193,23 @@ func (m Model) demoBarReorderStep() (Model, tea.Cmd) {
 
 // demoBarTrashStep drags the last bar in the top panel to the trash zone.
 func (m Model) demoBarTrashStep() (Model, tea.Cmd) {
-	topPanelID := m.layoutState.panelOrder[0]
-	var bars []barGeom
-	if topPanelID == "claude" {
-		bars = m.layout.claudeBars
-	} else {
-		bars = m.layout.codexBars
-	}
-
-	if len(bars) == 0 {
-		m.demoStep = demoWait4
-		m.demoFrame = 0
-		return m, demoTickCmd()
-	}
-
-	trashBar := bars[len(bars)-1] // last bar
-	tz := trashZoneRect(m.width, m.height)
-	tzCenter := rectCenter(tz)
-
 	if m.demoFrame == 1 {
+		topPanelID := m.layoutState.panelOrder[0]
+		var bars []barGeom
+		if topPanelID == "claude" {
+			bars = m.layout.claudeBars
+		} else {
+			bars = m.layout.codexBars
+		}
+		if len(bars) == 0 {
+			m.demoStep = demoWait4
+			m.demoFrame = 0
+			return m, demoTickCmd()
+		}
+		trashBar := bars[len(bars)-1]
+		tz := trashZoneRect(m.width, m.height)
 		start := rectCenter(trashBar.bounds)
+		end := rectCenter(tz)
 		m.drag = dragState{
 			phase:      dragActive,
 			target:     dragTargetBar,
@@ -237,23 +218,22 @@ func (m Model) demoBarTrashStep() (Model, tea.Cmd) {
 			startX:     start.X, startY: start.Y,
 			currX: start.X, currY: start.Y,
 		}
-		// Store trash zone in layout so handleMouseUp can find it.
+		m.demoEndX = end.X
+		m.demoEndY = end.Y
 		m.layout.trashZone = tz
 		return m, demoTickCmd()
 	}
 
 	if m.demoFrame <= demoAnimDuration {
-		startPt := rectCenter(trashBar.bounds)
 		t := easeOutCubic(float64(m.demoFrame-1) / float64(demoAnimDuration-1))
-		m.drag.currX = startPt.X + int(t*float64(tzCenter.X-startPt.X))
-		m.drag.currY = startPt.Y + int(t*float64(tzCenter.Y-startPt.Y))
-		// Keep trash zone stored for the view's trash overlay.
-		m.layout.trashZone = tz
+		m.drag.currX = m.drag.startX + int(t*float64(m.demoEndX-m.drag.startX))
+		m.drag.currY = m.drag.startY + int(t*float64(m.demoEndY-m.drag.startY))
+		m.layout.trashZone = trashZoneRect(m.width, m.height)
 		return m, demoTickCmd()
 	}
 
-	// Done: hide the bar (simulate drop on trash zone).
-	m.layoutState.hidden[trashBar.key] = true
+	// Done: hide the bar.
+	m.layoutState.hidden[m.drag.barKey] = true
 	m.drag = dragState{}
 	m.demoStep = demoWait4
 	m.demoFrame = 0

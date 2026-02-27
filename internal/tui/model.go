@@ -86,6 +86,8 @@ type Model struct {
 	demoMode  bool
 	demoStep  demoStep
 	demoFrame int
+	demoEndX  int // target X for current drag animation (captured on frame 1)
+	demoEndY  int // target Y for current drag animation (captured on frame 1)
 
 	// Background
 	bgGrid   []bgCell
