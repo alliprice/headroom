@@ -18,9 +18,7 @@ const (
 	demoBarReorder                 // drag a bar to a different slot
 	demoWait3                      // pause after reorder
 	demoBarTrash                   // drag a bar to the trash zone
-	demoWait4                      // pause after trash
-	demoRestore                    // reset layout (like pressing 0)
-	demoWait5                      // pause after restore
+	demoWait4                      // pause after trash, then quit
 	demoDone                       // quit
 )
 
@@ -78,16 +76,6 @@ func (m Model) updateDemo() (Model, tea.Cmd) {
 		return m.demoBarTrashStep()
 
 	case demoWait4:
-		if m.demoFrame >= demoWaitFrames(1500) {
-			m.demoStep = demoRestore
-			m.demoFrame = 0
-		}
-		return m, demoTickCmd()
-
-	case demoRestore:
-		return m.demoRestoreStep()
-
-	case demoWait5:
 		if m.demoFrame >= demoWaitFrames(2000) {
 			m.demoStep = demoDone
 			return m, tea.Quit
@@ -230,22 +218,6 @@ func (m Model) demoBarTrashStep() (Model, tea.Cmd) {
 	m.layoutState.hidden[m.drag.barKey] = true
 	m.drag = dragState{}
 	m.demoStep = demoWait4
-	m.demoFrame = 0
-	return m, demoTickCmd()
-}
-
-// demoRestoreStep simulates pressing the 0 key to restore all hidden bars.
-func (m Model) demoRestoreStep() (Model, tea.Cmd) {
-	var claudeKeys, codexKeys []string
-	for _, c := range m.categories {
-		if len(c.Key) > 6 && c.Key[:6] == "codex_" {
-			codexKeys = append(codexKeys, c.Key)
-		} else {
-			claudeKeys = append(claudeKeys, c.Key)
-		}
-	}
-	m.layoutState = defaultLayoutState(claudeKeys, codexKeys)
-	m.demoStep = demoWait5
 	m.demoFrame = 0
 	return m, demoTickCmd()
 }
