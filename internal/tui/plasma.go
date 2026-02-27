@@ -84,7 +84,7 @@ func plasmaTickCmd() tea.Cmd {
 // RenderPlasma renders a full-screen plasma animation frame to a string
 // ready for direct terminal output. The logo is centered and overlaid with
 // a bright white foreground on top of the plasma background.
-func RenderPlasma(width, height, frame int) string {
+func RenderPlasma(width, height, frame int, subtitle string) string {
 	t := float64(frame) * 0.08
 	brightness := 0.85 + 0.15*math.Sin(t*0.3)
 
@@ -98,7 +98,7 @@ func RenderPlasma(width, height, frame int) string {
 		"",
 		"h e a d r o o m",
 		"",
-		"press any key to wake",
+		subtitle,
 	}
 
 	// Compute the widest logo line.

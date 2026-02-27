@@ -16,7 +16,17 @@ func (m Model) View() tea.View {
 	var content string
 
 	if m.state == stateSleeping {
-		content = RenderPlasma(m.width, m.height, m.sleepFrame)
+		content = RenderPlasma(m.width, m.height, m.sleepFrame, "press any key to wake")
+		v := tea.NewView(content)
+		v.AltScreen = true
+		v.ReportFocus = true
+		v.MouseMode = tea.MouseModeCellMotion
+		return v
+	}
+
+	if m.state == stateLoading {
+		dots := strings.Repeat(".", (m.sleepFrame/4)%4)
+		content = RenderPlasma(m.width, m.height, m.sleepFrame, "loading"+dots)
 		v := tea.NewView(content)
 		v.AltScreen = true
 		v.ReportFocus = true

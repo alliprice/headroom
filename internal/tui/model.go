@@ -15,6 +15,7 @@ type state int
 
 const (
 	stateRunning state = iota
+	stateLoading
 	stateSleeping
 )
 
@@ -89,7 +90,7 @@ type layoutInfo struct {
 
 // NewModel creates a new headroom TUI model.
 func NewModel(debugSleep bool) Model {
-	s := stateRunning
+	s := stateLoading
 	if debugSleep {
 		s = stateSleeping
 	}
@@ -112,10 +113,11 @@ func (m Model) Init() tea.Cmd {
 		return tea.Batch(plasmaTickCmd(), tea.RequestWindowSize)
 	}
 
-	// Probe for Codex availability
+	// Probe for Codex availability; start plasma tick for loading animation
 	return tea.Batch(
 		m.probeCodex(),
 		tea.RequestWindowSize,
+		plasmaTickCmd(),
 	)
 }
 
@@ -167,6 +169,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.fetchTime.IsZero() {
 			t := msg.fetchTime
 			m.lastFetchTime = &t
+		}
+		if m.state == stateLoading {
+			m.state = stateRunning
 		}
 		// Initialize or sync layout state with current category keys.
 		var claudeKeys, codexKeys []string
@@ -223,7 +228,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case sleepTickMsg:
-		if m.state != stateSleeping {
+		if m.state != stateSleeping && m.state != stateLoading {
 			return m, nil
 		}
 		m.sleepFrame++
@@ -259,6 +264,14 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// In input mode (interval prompt)
 	if m.inputMode == inputInterval {
 		return m.handleIntervalInput(msg)
+	}
+
+	// Loading mode: only q to quit
+	if m.state == stateLoading {
+		if key.Matches(msg, m.keys.Quit) {
+			return m, tea.Quit
+		}
+		return m, nil
 	}
 
 	// Sleep mode: any key wakes except q
