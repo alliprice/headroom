@@ -5,6 +5,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/alliprice/headroom/internal/provider"
 )
 
 // demoStep tracks the current phase of the auto-play demo sequence.
@@ -96,21 +98,21 @@ func (m Model) demoPanelSwapStep() (Model, tea.Cmd) {
 			return m, demoTickCmd()
 		}
 		topPanelID := m.layoutState.panelOrder[0]
-		var topRect, botRect image.Rectangle
-		if topPanelID == "claude" {
-			topRect = m.layout.claudePanel
-			botRect = m.layout.codexPanel
-		} else {
-			topRect = m.layout.codexPanel
-			botRect = m.layout.claudePanel
-		}
+		botPanelID := m.layoutState.panelOrder[1]
+		topRect := m.layout.panels[topPanelID]
+		botRect := m.layout.panels[botPanelID]
 		start := rectCenter(topRect)
 		end := rectCenter(botRect)
+		p := provider.ByID(topPanelID)
+		displayName := topPanelID
+		if p != nil {
+			displayName = p.DisplayName
+		}
 		m.drag = dragState{
 			phase:      dragActive,
 			target:     dragTargetPanel,
 			panelID:    topPanelID,
-			ghostLabel: m.panelDisplayName(topPanelID),
+			ghostLabel: displayName,
 			startX:     start.X, startY: start.Y,
 			currX: start.X, currY: start.Y,
 		}
@@ -137,12 +139,7 @@ func (m Model) demoPanelSwapStep() (Model, tea.Cmd) {
 func (m Model) demoBarReorderStep() (Model, tea.Cmd) {
 	if m.demoFrame == 1 {
 		topPanelID := m.layoutState.panelOrder[0]
-		var bars []barGeom
-		if topPanelID == "claude" {
-			bars = m.layout.claudeBars
-		} else {
-			bars = m.layout.codexBars
-		}
+		bars := m.layout.bars[topPanelID]
 		if len(bars) < 2 {
 			m.demoStep = demoWait3
 			m.demoFrame = 0
@@ -155,6 +152,7 @@ func (m Model) demoBarReorderStep() (Model, tea.Cmd) {
 		m.drag = dragState{
 			phase:      dragActive,
 			target:     dragTargetBar,
+			panelID:    topPanelID,
 			barKey:     srcBar.key,
 			ghostLabel: m.catDisplayName(srcBar.key),
 			startX:     start.X, startY: start.Y,
@@ -179,10 +177,19 @@ func (m Model) demoBarReorderStep() (Model, tea.Cmd) {
 	return m, demoTickCmd()
 }
 
-// demoBarTrashStep drags the last Claude bar (Sonnet) to the trash zone.
+// demoBarTrashStep drags the last bar in the first provider's panel to the trash zone.
 func (m Model) demoBarTrashStep() (Model, tea.Cmd) {
 	if m.demoFrame == 1 {
-		bars := m.layout.claudeBars
+		// Find the first provider panel that has bars.
+		var trashPID string
+		var bars []barGeom
+		for _, pid := range m.layoutState.panelOrder {
+			if b := m.layout.bars[pid]; len(b) > 0 {
+				trashPID = pid
+				bars = b
+				break
+			}
+		}
 		if len(bars) == 0 {
 			m.demoStep = demoWait4
 			m.demoFrame = 0
@@ -195,6 +202,7 @@ func (m Model) demoBarTrashStep() (Model, tea.Cmd) {
 		m.drag = dragState{
 			phase:      dragActive,
 			target:     dragTargetBar,
+			panelID:    trashPID,
 			barKey:     trashBar.key,
 			ghostLabel: m.catDisplayName(trashBar.key),
 			startX:     start.X, startY: start.Y,
@@ -225,16 +233,4 @@ func (m Model) demoBarTrashStep() (Model, tea.Cmd) {
 // rectCenter returns the center point of a rectangle.
 func rectCenter(r image.Rectangle) image.Point {
 	return image.Pt((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2)
-}
-
-// panelDisplayName returns the display name for a panel ID.
-func (m Model) panelDisplayName(panelID string) string {
-	switch panelID {
-	case "claude":
-		return "Claude"
-	case "codex":
-		return "Codex"
-	default:
-		return panelID
-	}
 }

@@ -11,7 +11,7 @@ import (
 )
 
 // FetchCodex retrieves usage data from Codex via the app-server JSON-RPC interface.
-// Returns (nil, nil) if the codex binary is not installed — this is not an error.
+// Returns (nil, nil) if the codex binary is not installed -- this is not an error.
 func FetchCodex() (map[string]any, error) {
 	initMsg, _ := json.Marshal(map[string]any{
 		"jsonrpc": "2.0",

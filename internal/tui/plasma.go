@@ -40,7 +40,7 @@ func init() {
 	for _, rk := range rawKeypoints {
 		c, err := colorful.Hex(rk.hex)
 		if err != nil {
-			// Fall back to black on parse error — should never happen with
+			// Fall back to black on parse error --should never happen with
 			// hard-coded literals.
 			c = colorful.Color{}
 		}
@@ -243,7 +243,7 @@ func RenderPlasma(width, height, frame int, subtitle string) string {
 	t := float64(frame) * 0.08
 	brightness := 0.85 + 0.15*math.Sin(t*0.3)
 
-	// Logo lines — centered on the plasma canvas.
+	// Logo lines --centered on the plasma canvas.
 	logo := []string{
 		"╭─────────╮",
 		"│  ▄███▄  │",

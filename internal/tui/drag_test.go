@@ -40,12 +40,12 @@ func TestMoveToSlot(t *testing.T) {
 			expected: []string{"c", "a", "b"},
 		},
 		{
-			name:     "Same slot returns nil",
-			order:    []string{"a", "b", "c"},
-			hidden:   map[string]bool{},
-			dragKey:  "a",
-			slot:     0,
-			wantNil:  true,
+			name:    "Same slot returns nil",
+			order:   []string{"a", "b", "c"},
+			hidden:  map[string]bool{},
+			dragKey: "a",
+			slot:    0,
+			wantNil: true,
 		},
 		{
 			name:     "Slot beyond bounds clamped",
@@ -64,12 +64,12 @@ func TestMoveToSlot(t *testing.T) {
 			expected: []string{"c", "a", "b"},
 		},
 		{
-			name:     "Single item returns nil",
-			order:    []string{"a"},
-			hidden:   map[string]bool{},
-			dragKey:  "a",
-			slot:     0,
-			wantNil:  true,
+			name:    "Single item returns nil",
+			order:   []string{"a"},
+			hidden:  map[string]bool{},
+			dragKey: "a",
+			slot:    0,
+			wantNil: true,
 		},
 		{
 			name:     "Hidden entries preserved",
@@ -177,16 +177,17 @@ func TestHideAllBarsInPanel(t *testing.T) {
 	tests := []struct {
 		name         string
 		panelID      string
-		claudeCats   []string
-		codexCats    []string
+		catOrder     map[string][]string
 		initialHide  map[string]bool
 		expectedHide map[string]bool
 	}{
 		{
-			name:       "Hide all Claude bars",
-			panelID:    "claude",
-			claudeCats: []string{"five_hour", "seven_day"},
-			codexCats:  []string{"codex_primary"},
+			name:    "Hide all Claude bars",
+			panelID: "claude",
+			catOrder: map[string][]string{
+				"claude": {"five_hour", "seven_day"},
+				"codex":  {"codex_primary"},
+			},
 			initialHide: map[string]bool{
 				"codex_primary": true,
 			},
@@ -197,24 +198,28 @@ func TestHideAllBarsInPanel(t *testing.T) {
 			},
 		},
 		{
-			name:       "Hide all Codex bars",
-			panelID:    "codex",
-			claudeCats: []string{"five_hour"},
-			codexCats:  []string{"codex_primary", "codex_secondary"},
+			name:    "Hide all Codex bars",
+			panelID: "codex",
+			catOrder: map[string][]string{
+				"claude": {"five_hour"},
+				"codex":  {"codex_primary", "codex_secondary"},
+			},
 			initialHide: map[string]bool{
 				"five_hour": true,
 			},
 			expectedHide: map[string]bool{
-				"five_hour":        true,
-				"codex_primary":    true,
-				"codex_secondary":  true,
+				"five_hour":       true,
+				"codex_primary":   true,
+				"codex_secondary": true,
 			},
 		},
 		{
-			name:       "Unknown panel is no-op",
-			panelID:    "unknown",
-			claudeCats: []string{"five_hour"},
-			codexCats:  []string{"codex_primary"},
+			name:    "Unknown panel is no-op",
+			panelID: "unknown",
+			catOrder: map[string][]string{
+				"claude": {"five_hour"},
+				"codex":  {"codex_primary"},
+			},
 			initialHide: map[string]bool{
 				"five_hour": true,
 			},
@@ -223,10 +228,11 @@ func TestHideAllBarsInPanel(t *testing.T) {
 			},
 		},
 		{
-			name:       "Already-hidden bars stay hidden",
-			panelID:    "claude",
-			claudeCats: []string{"five_hour", "seven_day"},
-			codexCats:  []string{},
+			name:    "Already-hidden bars stay hidden",
+			panelID: "claude",
+			catOrder: map[string][]string{
+				"claude": {"five_hour", "seven_day"},
+			},
 			initialHide: map[string]bool{
 				"five_hour": true,
 			},
@@ -240,9 +246,8 @@ func TestHideAllBarsInPanel(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ls := layoutState{
-				claudeCatOrder: tt.claudeCats,
-				codexCatOrder:  tt.codexCats,
-				hidden:         tt.initialHide,
+				catOrder: tt.catOrder,
+				hidden:   tt.initialHide,
 			}
 			ls.hideAllBarsInPanel(tt.panelID)
 			if len(ls.hidden) != len(tt.expectedHide) {
@@ -258,10 +263,12 @@ func TestHideAllBarsInPanel(t *testing.T) {
 }
 
 func TestDefaultLayoutState(t *testing.T) {
-	claudeKeys := []string{"five_hour", "seven_day"}
-	codexKeys := []string{"codex_primary", "codex_secondary"}
+	catsByProvider := map[string][]string{
+		"claude": {"five_hour", "seven_day"},
+		"codex":  {"codex_primary", "codex_secondary"},
+	}
 
-	ls := defaultLayoutState(claudeKeys, codexKeys)
+	ls := defaultLayoutState(catsByProvider)
 
 	// Panel order should be ["claude", "codex"]
 	if len(ls.panelOrder) != 2 {
@@ -275,20 +282,22 @@ func TestDefaultLayoutState(t *testing.T) {
 	}
 
 	// Cat orders should match input
-	if len(ls.claudeCatOrder) != len(claudeKeys) {
-		t.Fatalf("claudeCatOrder length mismatch: expected %d, got %d", len(claudeKeys), len(ls.claudeCatOrder))
+	claudeKeys := catsByProvider["claude"]
+	codexKeys := catsByProvider["codex"]
+	if len(ls.catOrder["claude"]) != len(claudeKeys) {
+		t.Fatalf("claude catOrder length mismatch: expected %d, got %d", len(claudeKeys), len(ls.catOrder["claude"]))
 	}
 	for i := range claudeKeys {
-		if ls.claudeCatOrder[i] != claudeKeys[i] {
-			t.Errorf("claudeCatOrder[%d]: expected %q, got %q", i, claudeKeys[i], ls.claudeCatOrder[i])
+		if ls.catOrder["claude"][i] != claudeKeys[i] {
+			t.Errorf("claude catOrder[%d]: expected %q, got %q", i, claudeKeys[i], ls.catOrder["claude"][i])
 		}
 	}
-	if len(ls.codexCatOrder) != len(codexKeys) {
-		t.Fatalf("codexCatOrder length mismatch: expected %d, got %d", len(codexKeys), len(ls.codexCatOrder))
+	if len(ls.catOrder["codex"]) != len(codexKeys) {
+		t.Fatalf("codex catOrder length mismatch: expected %d, got %d", len(codexKeys), len(ls.catOrder["codex"]))
 	}
 	for i := range codexKeys {
-		if ls.codexCatOrder[i] != codexKeys[i] {
-			t.Errorf("codexCatOrder[%d]: expected %q, got %q", i, codexKeys[i], ls.codexCatOrder[i])
+		if ls.catOrder["codex"][i] != codexKeys[i] {
+			t.Errorf("codex catOrder[%d]: expected %q, got %q", i, codexKeys[i], ls.catOrder["codex"][i])
 		}
 	}
 
@@ -312,8 +321,10 @@ func TestOrderedCats(t *testing.T) {
 			name:  "Returns all Claude keys when nothing hidden",
 			panel: "claude",
 			ls: layoutState{
-				claudeCatOrder: []string{"five_hour", "seven_day"},
-				hidden:         map[string]bool{},
+				catOrder: map[string][]string{
+					"claude": {"five_hour", "seven_day"},
+				},
+				hidden: map[string]bool{},
 			},
 			expected: []string{"five_hour", "seven_day"},
 		},
@@ -321,8 +332,10 @@ func TestOrderedCats(t *testing.T) {
 			name:  "Omits hidden Claude keys",
 			panel: "claude",
 			ls: layoutState{
-				claudeCatOrder: []string{"five_hour", "seven_day", "extra"},
-				hidden:         map[string]bool{"seven_day": true},
+				catOrder: map[string][]string{
+					"claude": {"five_hour", "seven_day", "extra"},
+				},
+				hidden: map[string]bool{"seven_day": true},
 			},
 			expected: []string{"five_hour", "extra"},
 		},
@@ -330,8 +343,10 @@ func TestOrderedCats(t *testing.T) {
 			name:  "Returns all Codex keys when nothing hidden",
 			panel: "codex",
 			ls: layoutState{
-				codexCatOrder: []string{"codex_primary", "codex_secondary"},
-				hidden:        map[string]bool{},
+				catOrder: map[string][]string{
+					"codex": {"codex_primary", "codex_secondary"},
+				},
+				hidden: map[string]bool{},
 			},
 			expected: []string{"codex_primary", "codex_secondary"},
 		},
@@ -339,23 +354,27 @@ func TestOrderedCats(t *testing.T) {
 			name:  "Omits hidden Codex keys",
 			panel: "codex",
 			ls: layoutState{
-				codexCatOrder: []string{"codex_primary", "codex_secondary"},
-				hidden:        map[string]bool{"codex_primary": true},
+				catOrder: map[string][]string{
+					"codex": {"codex_primary", "codex_secondary"},
+				},
+				hidden: map[string]bool{"codex_primary": true},
 			},
 			expected: []string{"codex_secondary"},
 		},
 		{
 			name:     "Unknown panel returns nil",
 			panel:    "unknown",
-			ls:       layoutState{},
+			ls:       layoutState{catOrder: map[string][]string{}},
 			expected: nil,
 		},
 		{
 			name:  "All hidden returns empty slice",
 			panel: "claude",
 			ls: layoutState{
-				claudeCatOrder: []string{"five_hour", "seven_day"},
-				hidden:         map[string]bool{"five_hour": true, "seven_day": true},
+				catOrder: map[string][]string{
+					"claude": {"five_hour", "seven_day"},
+				},
+				hidden: map[string]bool{"five_hour": true, "seven_day": true},
 			},
 			expected: []string{},
 		},
@@ -462,26 +481,34 @@ func testModel() Model {
 			{Key: "codex_primary", Name: "Session"},
 			{Key: "codex_secondary", Name: "Weekly"},
 		},
+		available:     map[string]bool{"claude": true, "codex": true},
+		providerExtra: map[string]*parse.ExtraUsage{},
 		layout: &layoutInfo{
-			claudePanel: image.Rect(10, 2, 70, 12),
-			codexPanel:  image.Rect(10, 13, 70, 23),
-			statusBar:   image.Rect(0, 23, 80, 24),
-			claudeBars: []barGeom{
-				{key: "five_hour", bounds: image.Rect(12, 4, 68, 6)},
-				{key: "seven_day", bounds: image.Rect(12, 7, 68, 9)},
-				{key: "extra_usage", bounds: image.Rect(12, 10, 68, 12)},
+			panels: map[string]image.Rectangle{
+				"claude": image.Rect(10, 2, 70, 12),
+				"codex":  image.Rect(10, 13, 70, 23),
 			},
-			codexBars: []barGeom{
-				{key: "codex_primary", bounds: image.Rect(12, 15, 68, 17)},
-				{key: "codex_secondary", bounds: image.Rect(12, 18, 68, 20)},
+			bars: map[string][]barGeom{
+				"claude": {
+					{key: "five_hour", bounds: image.Rect(12, 4, 68, 6)},
+					{key: "seven_day", bounds: image.Rect(12, 7, 68, 9)},
+					{key: "extra_usage", bounds: image.Rect(12, 10, 68, 12)},
+				},
+				"codex": {
+					{key: "codex_primary", bounds: image.Rect(12, 15, 68, 17)},
+					{key: "codex_secondary", bounds: image.Rect(12, 18, 68, 20)},
+				},
 			},
+			statusBar: image.Rect(0, 23, 80, 24),
 			trashZone: trashZoneRect(80, 24),
 		},
 		layoutState: layoutState{
-			panelOrder:     []string{"claude", "codex"},
-			claudeCatOrder: []string{"five_hour", "seven_day"},
-			codexCatOrder:  []string{"codex_primary", "codex_secondary"},
-			hidden:         map[string]bool{},
+			panelOrder: []string{"claude", "codex"},
+			catOrder: map[string][]string{
+				"claude": {"five_hour", "seven_day"},
+				"codex":  {"codex_primary", "codex_secondary"},
+			},
+			hidden: map[string]bool{},
 		},
 	}
 	return m
@@ -608,10 +635,10 @@ func TestHandleMouseDown(t *testing.T) {
 
 func TestHandleMouseMove(t *testing.T) {
 	tests := []struct {
-		name          string
+		name           string
 		startX, startY int
-		moveX, moveY  int
-		expectedPhase dragPhase
+		moveX, moveY   int
+		expectedPhase  dragPhase
 	}{
 		{
 			name:          "Small movement stays pending",
@@ -672,19 +699,20 @@ func TestHandleMouseMove(t *testing.T) {
 
 func TestHandleMouseUpTrash(t *testing.T) {
 	tests := []struct {
-		name        string
-		dragTarget  dragTarget
-		barKey      string
-		panelID     string
-		releaseX    int
-		releaseY    int
-		expectHide  bool
+		name         string
+		dragTarget   dragTarget
+		barKey       string
+		panelID      string
+		releaseX     int
+		releaseY     int
+		expectHide   bool
 		expectHidden map[string]bool
 	}{
 		{
 			name:       "Bar dragged to trash zone is hidden",
 			dragTarget: dragTargetBar,
 			barKey:     "five_hour",
+			panelID:    "claude",
 			releaseX:   70,
 			releaseY:   16,
 			expectHide: true,
@@ -693,12 +721,13 @@ func TestHandleMouseUpTrash(t *testing.T) {
 			},
 		},
 		{
-			name:       "Bar released outside trash zone not hidden",
-			dragTarget: dragTargetBar,
-			barKey:     "five_hour",
-			releaseX:   40,
-			releaseY:   10,
-			expectHide: false,
+			name:         "Bar released outside trash zone not hidden",
+			dragTarget:   dragTargetBar,
+			barKey:       "five_hour",
+			panelID:      "claude",
+			releaseX:     40,
+			releaseY:     10,
+			expectHide:   false,
 			expectHidden: map[string]bool{},
 		},
 		{
@@ -714,18 +743,19 @@ func TestHandleMouseUpTrash(t *testing.T) {
 			},
 		},
 		{
-			name:       "Panel released outside trash zone not hidden",
-			dragTarget: dragTargetPanel,
-			panelID:    "claude",
-			releaseX:   40,
-			releaseY:   10,
-			expectHide: false,
+			name:         "Panel released outside trash zone not hidden",
+			dragTarget:   dragTargetPanel,
+			panelID:      "claude",
+			releaseX:     40,
+			releaseY:     10,
+			expectHide:   false,
 			expectHidden: map[string]bool{},
 		},
 		{
 			name:       "extra_usage dragged to trash zone is hidden",
 			dragTarget: dragTargetBar,
 			barKey:     "extra_usage",
+			panelID:    "claude",
 			releaseX:   70,
 			releaseY:   16,
 			expectHide: true,
@@ -842,6 +872,7 @@ func TestLiveReorderBar(t *testing.T) {
 			m.drag = dragState{
 				phase:   dragActive,
 				target:  dragTargetBar,
+				panelID: "claude",
 				barKey:  tt.dragKey,
 				startX:  40,
 				startY:  5,
@@ -849,27 +880,27 @@ func TestLiveReorderBar(t *testing.T) {
 				currY:   tt.currY,
 			}
 
-			initialOrder := append([]string(nil), m.layoutState.claudeCatOrder...)
+			initialOrder := append([]string(nil), m.layoutState.catOrder["claude"]...)
 			m.liveReorderBar()
 
 			if tt.expectNoChange {
-				if len(m.layoutState.claudeCatOrder) != len(initialOrder) {
+				if len(m.layoutState.catOrder["claude"]) != len(initialOrder) {
 					t.Fatalf("order changed when it shouldn't have")
 				}
-				for i := range m.layoutState.claudeCatOrder {
-					if m.layoutState.claudeCatOrder[i] != initialOrder[i] {
-						t.Errorf("order changed at index %d: %q -> %q", i, initialOrder[i], m.layoutState.claudeCatOrder[i])
+				for i := range m.layoutState.catOrder["claude"] {
+					if m.layoutState.catOrder["claude"][i] != initialOrder[i] {
+						t.Errorf("order changed at index %d: %q -> %q", i, initialOrder[i], m.layoutState.catOrder["claude"][i])
 					}
 				}
 				return
 			}
 
-			if len(m.layoutState.claudeCatOrder) != len(tt.expectedOrder) {
-				t.Fatalf("order length: expected %d, got %d", len(tt.expectedOrder), len(m.layoutState.claudeCatOrder))
+			if len(m.layoutState.catOrder["claude"]) != len(tt.expectedOrder) {
+				t.Fatalf("order length: expected %d, got %d", len(tt.expectedOrder), len(m.layoutState.catOrder["claude"]))
 			}
-			for i := range m.layoutState.claudeCatOrder {
-				if m.layoutState.claudeCatOrder[i] != tt.expectedOrder[i] {
-					t.Errorf("index %d: expected %q, got %q", i, tt.expectedOrder[i], m.layoutState.claudeCatOrder[i])
+			for i := range m.layoutState.catOrder["claude"] {
+				if m.layoutState.catOrder["claude"][i] != tt.expectedOrder[i] {
+					t.Errorf("index %d: expected %q, got %q", i, tt.expectedOrder[i], m.layoutState.catOrder["claude"][i])
 				}
 			}
 		})
@@ -879,14 +910,15 @@ func TestLiveReorderBar(t *testing.T) {
 func TestLiveReorderBarSingleBar(t *testing.T) {
 	m := testModel()
 	// Remove all but one bar from Claude panel
-	m.layout.claudeBars = []barGeom{
+	m.layout.bars["claude"] = []barGeom{
 		{key: "five_hour", bounds: image.Rect(12, 4, 68, 6)},
 	}
-	m.layoutState.claudeCatOrder = []string{"five_hour"}
+	m.layoutState.catOrder["claude"] = []string{"five_hour"}
 
 	m.drag = dragState{
 		phase:   dragActive,
 		target:  dragTargetBar,
+		panelID: "claude",
 		barKey:  "five_hour",
 		startX:  40,
 		startY:  5,
@@ -894,16 +926,16 @@ func TestLiveReorderBarSingleBar(t *testing.T) {
 		currY:   10,
 	}
 
-	initialOrder := append([]string(nil), m.layoutState.claudeCatOrder...)
+	initialOrder := append([]string(nil), m.layoutState.catOrder["claude"]...)
 	m.liveReorderBar()
 
 	// Order should not change
-	if len(m.layoutState.claudeCatOrder) != len(initialOrder) {
+	if len(m.layoutState.catOrder["claude"]) != len(initialOrder) {
 		t.Fatalf("order changed when it shouldn't have")
 	}
-	for i := range m.layoutState.claudeCatOrder {
-		if m.layoutState.claudeCatOrder[i] != initialOrder[i] {
-			t.Errorf("order changed at index %d: %q -> %q", i, initialOrder[i], m.layoutState.claudeCatOrder[i])
+	for i := range m.layoutState.catOrder["claude"] {
+		if m.layoutState.catOrder["claude"][i] != initialOrder[i] {
+			t.Errorf("order changed at index %d: %q -> %q", i, initialOrder[i], m.layoutState.catOrder["claude"][i])
 		}
 	}
 }

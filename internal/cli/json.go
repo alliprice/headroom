@@ -6,9 +6,8 @@ import (
 	"math"
 	"os"
 
-	"github.com/alliprice/headroom/internal/auth"
-	"github.com/alliprice/headroom/internal/fetch"
 	"github.com/alliprice/headroom/internal/parse"
+	"github.com/alliprice/headroom/internal/provider"
 )
 
 // round1 rounds f to one decimal place.
@@ -21,36 +20,56 @@ func round2(f float64) float64 {
 	return math.Round(f*100) / 100
 }
 
-// RunJSON fetches usage data from Claude (and optionally Codex) and writes a
-// JSON budget-headroom summary to stdout.
+// RunJSON fetches usage data from all providers and writes a JSON
+// budget-headroom summary to stdout.
 func RunJSON() error {
-	token, err := auth.GetAccessToken()
-	if err != nil {
-		return err
+	var allCats []parse.Category
+	var extra *parse.ExtraUsage
+	hasMultipleProviders := false
+
+	// Probe and fetch from all providers.
+	available := make(map[string]bool)
+	for _, p := range provider.All {
+		if p.Probe == nil || p.Probe() {
+			available[p.ID] = true
+		}
 	}
 
-	data, err := fetch.FetchClaude(token)
-	if err != nil {
-		return err
+	providerCount := 0
+	for _, p := range provider.All {
+		if !available[p.ID] {
+			continue
+		}
+		res, _, err := p.Fetch()
+		if err != nil {
+			return err
+		}
+		if res == nil {
+			continue
+		}
+		providerCount++
+		allCats = append(allCats, res.Categories...)
+		if res.Extra != nil {
+			extra = res.Extra
+		}
 	}
 
-	claudeCats, extraUsage := parse.ParseClaude(data)
-
-	var codexCats []parse.Category
-	codexData, codexErr := fetch.FetchCodex()
-	if codexErr == nil && codexData != nil {
-		codexCats = parse.ParseCodex(codexData)
+	if providerCount > 1 {
+		hasMultipleProviders = true
 	}
 
-	allCats := CombineCategories(claudeCats, codexCats)
+	// Prefix names when multiple providers present.
+	if hasMultipleProviders {
+		allCats = prefixCategoryNames(allCats)
+	}
 
 	type categoryEntry struct {
-		Name       string  `json:"name"`
-		UsagePct   float64 `json:"usage_pct"`
-		GlidePct   float64 `json:"glide_pct"`
+		Name        string  `json:"name"`
+		UsagePct    float64 `json:"usage_pct"`
+		GlidePct    float64 `json:"glide_pct"`
 		HeadroomPct float64 `json:"headroom_pct"`
-		Status     string  `json:"status"`
-		Resets     string  `json:"resets"`
+		Status      string  `json:"status"`
+		Resets      string  `json:"resets"`
 	}
 
 	type extraEntry struct {
@@ -95,10 +114,10 @@ func RunJSON() error {
 		})
 	}
 
-	if extraUsage != nil {
-		usagePct := extraUsage.Utilization
-		limitDollars := extraUsage.MonthlyLimit / 100
-		usedDollars := extraUsage.UsedCredits / 100
+	if extra != nil {
+		usagePct := extra.Utilization
+		limitDollars := extra.MonthlyLimit / 100
+		usedDollars := extra.UsedCredits / 100
 
 		var status string
 		if usagePct >= 80 {

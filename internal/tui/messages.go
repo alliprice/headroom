@@ -8,11 +8,12 @@ import (
 
 // fetchResultMsg carries the result of a data fetch.
 type fetchResultMsg struct {
-	categories []parse.Category
-	extra      *parse.ExtraUsage
-	errorMsg   string
-	isAuthErr  bool
-	fetchTime  time.Time // when the fetch completed
+	categories    []parse.Category
+	extra         *parse.ExtraUsage              // backward compat: last non-nil extra
+	providerExtra map[string]*parse.ExtraUsage   // provider ID → extra usage
+	errorMsg      string
+	isAuthErr     bool
+	fetchTime     time.Time // when the fetch completed
 }
 
 // tickMsg fires every 1 second to update the "Updated: Xs ago" display
