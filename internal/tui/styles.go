@@ -47,4 +47,17 @@ var (
 	helpKeyStyle  = lipgloss.NewStyle().Foreground(colorNormal).Bold(true).Background(colorStatusBg)
 	helpDescStyle = lipgloss.NewStyle().Foreground(colorDim).Background(colorStatusBg)
 	helpSepStyle  = lipgloss.NewStyle().Foreground(colorDim).Background(colorStatusBg)
+
+	// Trash zone styles
+	trashStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorDim).
+			Foreground(colorDim).
+			Padding(0, 1)
+
+	trashActiveStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(colorError).
+				Foreground(colorError).
+				Padding(0, 1)
 )

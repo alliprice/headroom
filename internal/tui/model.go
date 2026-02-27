@@ -104,6 +104,7 @@ type layoutInfo struct {
 	statusBar   image.Rectangle
 	claudeBars  []barGeom
 	codexBars   []barGeom
+	trashZone   image.Rectangle
 }
 
 // NewModel creates a new headroom TUI model.

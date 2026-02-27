@@ -187,7 +187,7 @@ func (m Model) View() tea.View {
 			var content string
 			var barInfos []barLineInfo
 			if len(pd.cats) == 0 {
-				content = dimStyle.Render("All bars hidden (press 0 to reset)")
+				content = dimStyle.Render("All bars hidden — press ") + titleStyle.Render("0") + dimStyle.Render(" to restore")
 			} else {
 				content, barInfos = renderPanelWithGeom(pd.cats, pd.extra, panelContentWidth, eachHeight, animFn)
 			}
@@ -203,7 +203,7 @@ func (m Model) View() tea.View {
 		var content string
 		var barInfos []barLineInfo
 		if len(pd.cats) == 0 {
-			content = dimStyle.Render("All bars hidden (press 0 to reset)")
+			content = dimStyle.Render("All bars hidden — press ") + titleStyle.Render("0") + dimStyle.Render(" to restore")
 		} else {
 			content, barInfos = renderPanelWithGeom(pd.cats, pd.extra, panelContentWidth, panelAreaHeight-vFrame, animFn)
 		}
@@ -347,6 +347,17 @@ func (m Model) View() tea.View {
 			ghostLayer := lipgloss.NewLayer(ghost).
 				X(ghostX).Y(m.drag.currY).Z(10).ID("ghost")
 			comp.AddLayers(ghostLayer)
+		}
+
+		// Trash zone layer during active drag.
+		if m.drag.phase == dragActive {
+			tz := trashZoneRect(w, h)
+			m.layout.trashZone = tz
+			hovering := image.Pt(m.drag.currX, m.drag.currY).In(tz)
+			trashContent := renderTrashZone(hovering)
+			trashLayer := lipgloss.NewLayer(trashContent).
+				X(tz.Min.X).Y(tz.Min.Y).Z(5).ID("trash")
+			comp.AddLayers(trashLayer)
 		}
 
 		content = comp.Render()
@@ -673,4 +684,14 @@ func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width i
 	}
 
 	return strings.Join(lines, "\n"), barInfos
+}
+
+// renderTrashZone renders the trash drop zone overlay.
+// When hovering is true, it uses the highlighted (red) style.
+func renderTrashZone(hovering bool) string {
+	label := "🗑 drop"
+	if hovering {
+		return trashActiveStyle.Render(label)
+	}
+	return trashStyle.Render(label)
 }
