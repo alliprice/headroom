@@ -663,7 +663,6 @@ func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width i
 			lines = append(lines, "")
 			lineIdx++
 		}
-		catStartY := lineIdx
 		if showTitles {
 			limitDollars := extra.MonthlyLimit / 100
 			usedDollars := extra.UsedCredits / 100
@@ -680,7 +679,7 @@ func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width i
 		}
 		lines = append(lines, RenderBar(width, extraUsage, extraGlide, extraOpacity))
 		lineIdx++
-		barInfos = append(barInfos, barLineInfo{key: "extra_usage", relY: catStartY, height: lineIdx - catStartY})
+		// extra_usage is not added to barInfos — it's not draggable.
 	}
 
 	return strings.Join(lines, "\n"), barInfos
