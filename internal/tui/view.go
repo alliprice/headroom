@@ -132,6 +132,7 @@ func (m Model) View() tea.View {
 
 	var panels string
 	var panelBarInfos [][]barLineInfo // per-panel bar line info
+	var partHeights []int             // actual rendered height of each panel
 	eachHeight := 0
 	if len(panelDefs) > 1 {
 		eachHeight = (panelAreaHeight - vFrame*2 - 1) / 2
@@ -147,6 +148,7 @@ func (m Model) View() tea.View {
 			p := panelStyle.Width(widthArg).Render(content)
 			p = embedBorderTitle(p, pd.name, panelWidth)
 			parts = append(parts, p)
+			partHeights = append(partHeights, lipgloss.Height(p))
 			panelBarInfos = append(panelBarInfos, barInfos)
 		}
 		panels = lipgloss.JoinVertical(lipgloss.Left, parts[0], "", parts[1])
@@ -218,9 +220,8 @@ func (m Model) View() tea.View {
 					if pi == 0 {
 						pyOff = panelY
 					} else {
-						// Second panel offset: first panel height + 1 gap row
-						firstH := eachHeight + vFrame
-						pyOff = panelY + firstH + 1
+						// Second panel offset: actual first panel height + 1 gap row
+						pyOff = panelY + partHeights[0] + 1
 					}
 
 					if pi < len(panelBarInfos) {
@@ -236,8 +237,8 @@ func (m Model) View() tea.View {
 						}
 					}
 
-					// Panel bounds.
-					pH := eachHeight + vFrame
+					// Panel bounds (use actual rendered height).
+					pH := partHeights[pi]
 					pRect := image.Rect(panelX, pyOff, panelX+panelVisualWidth, pyOff+pH)
 					if pd.name == "Claude" {
 						m.layout.claudePanel = pRect

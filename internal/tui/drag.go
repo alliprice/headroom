@@ -213,8 +213,8 @@ func (m *Model) liveReorderPanel() {
 		}
 	}
 
-	if currentIdx == 0 && m.drag.currY > midY {
-		// Top panel dragged below midpoint → swap.
+	if currentIdx == 0 && m.drag.currY >= midY {
+		// Top panel dragged to or below midpoint → swap.
 		m.layoutState.panelOrder[0], m.layoutState.panelOrder[1] =
 			m.layoutState.panelOrder[1], m.layoutState.panelOrder[0]
 	} else if currentIdx == 1 && m.drag.currY < midY {
