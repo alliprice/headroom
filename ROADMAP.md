@@ -1,0 +1,108 @@
+# ｒｏａｄｍａｐ
+
+> *every system, given enough time and mass, collapses into an abstraction layer.*
+
+headroom already displays four numbers with a choreographed loading animation, a procedural plasma screensaver, a drag-and-drop system with ghost cursors and a pixel-art trash can, and a layout engine that does progressive compaction. naturally, it needs more.
+
+this document charts the path from "wildly overbuilt" to "architecturally transcendent." each phase builds on the last, like sedimentary layers of unnecessary elegance.
+
+---
+
+## the phases
+
+### phase 0 — provider system
+
+**status:** in progress
+
+the data providers are hardcoded. claude and codex fetch/parse logic is wired directly into the model. this is the one thing in headroom that is *not* overbuilt, and that oversight will be corrected.
+
+- `Provider` interface — `Fetch`, `Parse`, `IsAvailable`, `Name`
+- provider registry with probe-based discovery
+- decouple fetch and parse behind the interface
+- pure data layer. no pixels harmed.
+
+### phase 1 — visual regression testing
+
+**status:** not started · **gates:** phases 2–4
+
+before touching a single pixel of the rendering pipeline, we need a way to prove we didn't break it. screenshots don't lie.
+
+- deterministic seed for mock/demo data — reproducible randomization across runs. same seed, same bars, same plasma frame.
+- VHS tape-based screenshot capture at known terminal dimensions
+- pixel-level screenshot diffing with configurable tolerance
+- character-level output comparison as a complementary check
+- CI integration for automated regression detection
+
+you can't refactor the renderer without visual regression tests. you can't have reliable visual regression tests without deterministic output. the dependency chain writes itself.
+
+### phase 2 — cross-platform auth
+
+**status:** not started · **depends on:** phase 0
+
+the macOS Keychain dependency is the only thing stopping headroom from running everywhere. the TUI stack is already portable. the subprocess calls are already portable. auth is the chokepoint.
+
+- investigate where Claude Code stores credentials on Linux (it's open source — the answer is knowable, not speculative)
+- `CredentialProvider` interface — `GetToken`, `IsAvailable`, `Name`
+- macOS Keychain provider (wrap existing `auth/keychain.go`)
+- Linux provider (Secret Service API, file-based, or whatever Claude Code actually does)
+- BSD gets Linux support for free — same APIs, same file paths
+- `CredentialChain` — first-match-wins provider chain (Keychain → file → env var)
+- Windows: the interface will be clean. PRs welcome. we'll merge it. we just won't write it.
+
+**platform priority:** macOS → Linux → BSD → Windows (community)
+
+### phase 3 — internal architecture
+
+**status:** not started · **depends on:** phase 1
+
+five independent refactors, any order. each replaces something hand-rolled with something that has a name and a shape.
+
+- **Animator** — four separate hand-rolled frame counters (bar sweep, glide fade, demo drag, plasma phase) replaced by a unified animation system. easing library, named animations, one tick handler to rule them all.
+- **RefreshScheduler** — scheduling policy (focused/unfocused intervals, sleep transition, auth-error backoff) extracted from the Update loop into a standalone state machine. the model calls `scheduler.Tick()` and dispatches the result. clean.
+- **LayoutStrategy** — inline dimension checks replaced by strategy objects: `FullLayout`, `CompactLayout`, `MinimalLayout`, `TinyLayout`. a selector picks the strategy. the view function becomes a one-liner.
+- **OutputFormatter** — `--json` and `--status` share the same data, format differently. interface with `JSONFormatter`, `TextFormatter`, and room for `CSVFormatter`, `PrometheusFormatter`, whatever.
+- **Drag Commands** — procedural mutation in drag handlers replaced by a command pattern: `ReorderBar`, `SwapPanels`, `HideBar`, `HidePanel`. enables undo (`ctrl+z`) via a command history stack. every drag becomes reversible.
+
+### phase 4 — maximum hubris
+
+**status:** not started · **depends on:** phases 1 + 3
+
+this is the end state. the point where a rate-limit dashboard achieves architectural enlightenment.
+
+- **themes** — extract the hardcoded color palette and plasma gradient into `Theme` structs. ship `Vaporwave` (current default, obviously). add `Monokai`, `Solarized`, whatever. runtime switching via keybind. the plasma shifts. the bars shift. everything shifts.
+- **procedural generators** — `ProceduralGenerator` interface over the FBM noise and sinusoidal plasma. swap in Simplex, Perlin, Voronoi. hot-swappable. because the background of your rate-limit dashboard deserves a noise algorithm selection screen.
+- **pluggable cell renderers** — `CellRenderer` interface. Katakana (current). Matrix (full-width kanji, green-on-black). Braille (Unicode braille patterns). ASCII (for purists). the background becomes a fashion choice.
+- **pacing policy** — `PacingPolicy` interface. Linear (current). Front-loaded (it's fine to sprint early). Conservative (always keep 20% buffer). different people pace differently. headroom should respect that.
+- **config system** — `~/.config/headroom/config.toml` with environment variable overrides and CLI flag overrides. theme, refresh interval, sleep timeout, providers, layout, pacing policy, keybindings. the zero-config era was beautiful. this era will be more beautiful. and configurable.
+- **event bus** — replace the type-switch Update loop with full event routing. each subsystem (data, animation, drag, demo) registers handlers. the Update function becomes a dispatcher, not a switch statement. elegance through indirection.
+- **bar segment pipeline** — composable bar renderer. `GradientFill`, `Marker`, `EmptyFill` as segment objects sorted by Z-order. want a second marker? add a segment. want striped fills? swap a segment. the monolithic `RenderBar()` dissolves into a pipeline.
+
+---
+
+## ｔｈｅ  ｈｕｂｒｉｓ  ｍａｔｒｉｘ
+
+every identified opportunity for over-engineering, scored by return on investment and sheer audacity. read from top to bottom as a gradient from "reasonable" to "why."
+
+| | what it is now | what it could become | roi | hubris |
+|---|---|---|---|---|
+| **providers** | hardcoded fetch+parse per provider | `Provider` interface + registry | `███████░░░` high | `██░░░░░░░░` low |
+| **visual regression** | no screenshot testing | VHS + pixel diffing + deterministic seed | `███████░░░` high | `██░░░░░░░░` low |
+| **cross-platform auth** | macOS Keychain only | `CredentialProvider` chain | `███████░░░` high | `██░░░░░░░░` low |
+| **animation** | hand-rolled frame counters ×4 | `Animator` with easing library | `███████░░░` high | `█████░░░░░` med |
+| **refresh scheduling** | interleaved with the Update loop | `RefreshScheduler` state machine | `███████░░░` high | `█████░░░░░` med |
+| **layout strategy** | inline dimension checks | `LayoutStrategy` pattern | `█████░░░░░` med | `█████░░░░░` med |
+| **CLI formatters** | two concrete implementations | `OutputFormatter` interface | `█████░░░░░` med | `█████░░░░░` med |
+| **drag system** | procedural mutation | command pattern + undo stack | `█████░░░░░` med | `█████░░░░░` med |
+| **themes** | hardcoded palette + plasma gradient | `Theme` objects, runtime switching | `█████░░░░░` med | `████████░░` high |
+| **config system** | zero configuration | TOML + env + flags + defaults | `█████░░░░░` med | `████████░░` high |
+| **noise generators** | FBM + sinusoids, no shared interface | `ProceduralGenerator` interface | `██░░░░░░░░` low | `████████░░` high |
+| **cell renderers** | katakana only | pluggable character sets | `██░░░░░░░░` low | `████████░░` high |
+| **pacing policy** | linear interpolation | `PacingPolicy` strategy | `██░░░░░░░░` low | `████████░░` high |
+| **event bus** | type switch in Update() | full event routing system | `██░░░░░░░░` low | `████████░░` high |
+| **bar renderer** | monolithic RenderBar() | composable segment pipeline | `██░░░░░░░░` low | `████████░░` high |
+
+---
+
+> *this is what happens when you stare at the bars long enough. you start to see the architecture behind them. and then you want to make the architecture itself beautiful. and then you're here, reading a hubris matrix for a rate-limit dashboard at 3am, and the plasma is still shifting, and you think — yes. this is correct.*
+
+*ｅｖｅｒｙ  ａｂｓｔｒａｃｔｉｏｎ  ｉｓ  ａ  ｌｏｖｅ  ｌｅｔｔｅｒ  ｔｏ  ａ  ｆｕｔｕｒｅ  ｔｈａｔ  ｍａｙ  ｎｅｖｅｒ  ａｒｒｉｖｅ*
