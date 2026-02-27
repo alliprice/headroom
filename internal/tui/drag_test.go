@@ -469,7 +469,7 @@ func testModel() Model {
 			claudeBars: []barGeom{
 				{key: "five_hour", bounds: image.Rect(12, 4, 68, 6)},
 				{key: "seven_day", bounds: image.Rect(12, 7, 68, 9)},
-				{key: "extra_usage", bounds: image.Rect(12, 10, 68, 12), pinned: true},
+				{key: "extra_usage", bounds: image.Rect(12, 10, 68, 12)},
 			},
 			codexBars: []barGeom{
 				{key: "codex_primary", bounds: image.Rect(12, 15, 68, 17)},
@@ -516,10 +516,13 @@ func TestHandleMouseDown(t *testing.T) {
 			expectedLabel:  "Session",
 		},
 		{
-			name:          "Click on extra_usage (pinned) does not start drag",
-			x:             40,
-			y:             11,
-			expectedPhase: dragIdle,
+			name:           "Click on extra_usage starts bar drag",
+			x:              40,
+			y:              11,
+			expectedPhase:  dragPending,
+			expectedTarget: dragTargetBar,
+			expectedKey:    "extra_usage",
+			expectedLabel:  "extra_usage",
 		},
 		{
 			name:           "Click on Claude panel not on bar",
@@ -718,6 +721,17 @@ func TestHandleMouseUpTrash(t *testing.T) {
 			releaseY:   10,
 			expectHide: false,
 			expectHidden: map[string]bool{},
+		},
+		{
+			name:       "extra_usage dragged to trash zone is hidden",
+			dragTarget: dragTargetBar,
+			barKey:     "extra_usage",
+			releaseX:   70,
+			releaseY:   16,
+			expectHide: true,
+			expectHidden: map[string]bool{
+				"extra_usage": true,
+			},
 		},
 	}
 

@@ -162,7 +162,11 @@ func (m Model) View() tea.View {
 		switch pid {
 		case "claude":
 			if len(claudeCats) > 0 {
-				panelDefs = append(panelDefs, panelDef{"Claude", claudeCats, m.extra})
+				extra := m.extra
+				if m.layoutState.hidden["extra_usage"] {
+					extra = nil
+				}
+				panelDefs = append(panelDefs, panelDef{"Claude", claudeCats, extra})
 			}
 		case "codex":
 			if len(codexCats) > 0 {
@@ -681,7 +685,7 @@ func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width i
 		}
 		lines = append(lines, RenderBar(width, extraUsage, extraGlide, extraOpacity))
 		lineIdx++
-		barInfos = append(barInfos, barLineInfo{key: "extra_usage", relY: extraStartY, height: lineIdx - extraStartY, pinned: true})
+		barInfos = append(barInfos, barLineInfo{key: "extra_usage", relY: extraStartY, height: lineIdx - extraStartY})
 	}
 
 	return strings.Join(lines, "\n"), barInfos
