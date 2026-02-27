@@ -39,19 +39,19 @@ the safety net is in place. mutation-tested and confirmed: change one constant i
 
 ### phase 2 — cross-platform auth
 
-**status:** not started · **depends on:** phase 0
+**status:** done · **depends on:** phase 0
 
-the macOS Keychain dependency is the only thing stopping headroom from running everywhere. the TUI stack is already portable. the subprocess calls are already portable. auth is the chokepoint.
+the macOS Keychain dependency was the only thing stopping headroom from running everywhere. now it does.
 
-- investigate where Claude Code stores credentials on Linux (it's open source — the answer is knowable, not speculative)
-- `CredentialProvider` interface — `GetToken`, `IsAvailable`, `Name`
-- macOS Keychain provider (wrap existing `auth/keychain.go`)
-- Linux provider (Secret Service API, file-based, or whatever Claude Code actually does)
-- BSD gets Linux support for free — same APIs, same file paths
-- `CredentialChain` — first-match-wins provider chain (Keychain → file → env var)
-- Windows: the interface will be clean. PRs welcome. we'll merge it. we just won't write it.
-
-**platform priority:** macOS → Linux → BSD → Windows (community)
+- `credentialProvider` interface with `name()` and `getToken()` - unexported, internal to auth package
+- first-match-wins chain: env var (`CLAUDE_CODE_OAUTH_TOKEN`) -> credentials file (`~/.claude/.credentials.json`) -> macOS Keychain
+- `claudeCredentials` shared JSON struct used by both file and keychain providers
+- `claudeConfigDir()` respects `CLAUDE_CONFIG_DIR` env var, defaults to `~/.claude`
+- no build tags - keychain provider calls `security` via exec, fails gracefully on non-macOS
+- `GetAccessToken()` signature unchanged - zero caller impact
+- 11 tests: chain logic (4), env provider (2), file provider (5) - all hermetic via `t.Setenv`/`t.TempDir`
+- Linux and BSD work out of the box via the credentials file path
+- Windows: the interface is clean. PRs welcome.
 
 ### phase 3 — internal architecture
 
@@ -89,7 +89,7 @@ every identified opportunity for over-engineering, scored by return on investmen
 |---|---|---|---|---|
 | **providers** | ~~hardcoded fetch+parse~~ | `Provider` struct + registry | `██████████` done | `██░░░░░░░░` low |
 | **visual regression** | ~~no screenshot testing~~ | golden file ANSI comparison + CI | `██████████` done | `██░░░░░░░░` low |
-| **cross-platform auth** | macOS Keychain only | `CredentialProvider` chain | `███████░░░` high | `██░░░░░░░░` low |
+| **cross-platform auth** | ~~macOS Keychain only~~ | `credentialProvider` chain | `██████████` done | `██░░░░░░░░` low |
 | **animation** | hand-rolled frame counters ×4 | `Animator` with easing library | `███████░░░` high | `█████░░░░░` med |
 | **refresh scheduling** | interleaved with the Update loop | `RefreshScheduler` state machine | `███████░░░` high | `█████░░░░░` med |
 | **layout strategy** | inline dimension checks | `LayoutStrategy` pattern | `█████░░░░░` med | `█████░░░░░` med |
