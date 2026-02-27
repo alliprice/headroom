@@ -15,6 +15,7 @@ func main() {
 	status := flag.Bool("status", false, "Print usage summary and exit (no UI)")
 	jsonOut := flag.Bool("json", false, "Print usage as JSON and exit (no UI)")
 	debugSleep := flag.Bool("debug-sleep", false, "Start in sleep mode for debugging")
+	demo := flag.Bool("demo", false, "Auto-play demo sequence and exit")
 	flag.Parse()
 
 	if *status {
@@ -33,14 +34,14 @@ func main() {
 		return
 	}
 
-	if err := runTUI(*debugSleep); err != nil {
+	if err := runTUI(*debugSleep, *demo); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func runTUI(debugSleep bool) error {
-	m := tui.NewModel(debugSleep)
+func runTUI(debugSleep, demo bool) error {
+	m := tui.NewModel(debugSleep, demo)
 	p := tea.NewProgram(m)
 	_, err := p.Run()
 	return err
