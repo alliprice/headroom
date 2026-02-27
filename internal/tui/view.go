@@ -392,7 +392,7 @@ func (m Model) renderStatusBar() string {
 	if m.inputMode == inputInterval {
 		right = helpKeyStyle.Render("Interval (seconds): ") + helpDescStyle.Render(m.inputBuf+"_ ")
 	} else {
-		updated := parse.FormatUpdatedAgo(m.lastFetchTime)
+		updated := parse.FormatUpdatedAgo(m.sched.lastFetchTime)
 		right = helpDescStyle.Render(updated+"  ") + renderHelp(m.keys) + helpDescStyle.Render(" ")
 	}
 

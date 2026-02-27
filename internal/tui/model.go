@@ -50,20 +50,13 @@ type Model struct {
 	extra         *parse.ExtraUsage
 	providerExtra map[string]*parse.ExtraUsage // provider ID → extra usage
 	errorMsg      string
-	isAuthErr     bool
 
-	// Timing
-	lastFetchTime    *time.Time // nil = never fetched
-	lastFetchAttempt time.Time
-	lastFocusTime    time.Time
-
-	// UI config
-	refreshFocused int // seconds, default 300
+	// Refresh/sleep scheduling
+	sched refreshScheduler
 
 	// Window state
-	width    int
-	height   int
-	hasFocus bool
+	width  int
+	height int
 
 	// Mode
 	state      state
@@ -121,15 +114,13 @@ func NewModel(debugSleep, demo bool) Model {
 	}
 
 	return Model{
-		refreshFocused: parse.RefreshFocused,
-		hasFocus:       true,
-		lastFocusTime:  time.Now(),
-		state:          s,
-		debugSleep:     debugSleep,
-		demoMode:       demo,
-		keys:           newKeyMap(),
-		available:      make(map[string]bool),
-		providerExtra:  make(map[string]*parse.ExtraUsage),
+		sched:         newRefreshScheduler(0),
+		state:         s,
+		debugSleep:    debugSleep,
+		demoMode:      demo,
+		keys:          newKeyMap(),
+		available:     make(map[string]bool),
+		providerExtra: make(map[string]*parse.ExtraUsage),
 		layout: &layoutInfo{
 			panels: make(map[string]image.Rectangle),
 			bars:   make(map[string][]barGeom),
@@ -193,12 +184,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.FocusMsg:
-		m.hasFocus = true
-		m.lastFocusTime = time.Now()
+		m.sched.setFocus(true, time.Now())
 		return m, nil
 
 	case tea.BlurMsg:
-		m.hasFocus = false
+		m.sched.setFocus(false, time.Now())
 		return m, nil
 
 	case probeResultMsg:
@@ -210,11 +200,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.extra = msg.extra
 		m.providerExtra = msg.providerExtra
 		m.errorMsg = msg.errorMsg
-		m.isAuthErr = msg.isAuthErr
-		m.lastFetchAttempt = time.Now()
+		m.sched.recordFetchAttempt(time.Now())
+		if msg.errorMsg != "" {
+			m.sched.recordError(msg.isAuthErr)
+		} else {
+			m.sched.clearError()
+		}
 		if !msg.fetchTime.IsZero() {
-			t := msg.fetchTime
-			m.lastFetchTime = &t
+			m.sched.recordFetch(msg.fetchTime)
 		}
 		if m.state == stateLoading {
 			// Signal data is ready but don't transition yet - wait for frame ≥40
@@ -235,34 +228,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmds []tea.Cmd
 		cmds = append(cmds, tickCmd()) // re-arm the tick
 
-		// Check if we should enter sleep mode
-		if !m.hasFocus && m.state == stateRunning {
-			elapsed := time.Since(m.lastFocusTime).Seconds()
-			if elapsed >= float64(parse.SleepAfterUnfocusedSeconds) {
+		if m.state == stateRunning {
+			switch m.sched.tick(time.Now()) {
+			case refreshSleep:
 				m.state = stateSleeping
 				cmds = append(cmds, plasmaTickCmd())
-				return m, tea.Batch(cmds...)
-			}
-		}
-
-		// Check if refresh is needed
-		now := time.Now()
-		if m.lastFetchTime != nil {
-			interval := m.refreshFocused
-			if !m.hasFocus {
-				interval = parse.RefreshUnfocused
-			}
-			if now.Sub(*m.lastFetchTime).Seconds() >= float64(interval) {
-				cmds = append(cmds, doFetch(m.available))
-			}
-		} else if m.errorMsg != "" {
-			var retryInterval int
-			if m.isAuthErr {
-				retryInterval = parse.RefreshOnAuthError
-			} else {
-				retryInterval = parse.RefreshFocused
-			}
-			if now.Sub(m.lastFetchAttempt).Seconds() >= float64(retryInterval) {
+			case refreshFetch:
 				cmds = append(cmds, doFetch(m.available))
 			}
 		}
@@ -396,11 +367,10 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		m.state = stateRunning
-		m.hasFocus = true
-		m.lastFocusTime = time.Now()
+		m.sched.setFocus(true, time.Now())
 		// If this is the first wake (debug sleep), run the full init sequence:
 		// probe provider availability and start the periodic tick timer.
-		if m.lastFetchTime == nil && m.errorMsg == "" {
+		if m.sched.lastFetchTime == nil && m.errorMsg == "" {
 			return m, tea.Batch(probeProviders(), tickCmd())
 		}
 		return m, doFetch(m.available)
@@ -452,7 +422,7 @@ func (m Model) handleIntervalInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if val > 0 {
-			m.refreshFocused = val
+			m.sched.setInterval(val)
 		}
 		m.inputMode = inputNone
 		m.inputBuf = ""
