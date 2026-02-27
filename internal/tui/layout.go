@@ -72,10 +72,12 @@ func mergeOrder(existing, incoming []string) []string {
 	return existing
 }
 
-// moveKeyBefore reorders a full order slice by moving dragKey so that it
-// appears just before targetKey among the visible (non-hidden) entries.
-// Hidden entries keep their relative positions. Returns nil if no change.
-func moveKeyBefore(order []string, dragKey, targetKey string, hidden map[string]bool) []string {
+// moveToSlot reorders a full order slice by placing dragKey at the given
+// slot index among visible (non-hidden) entries. The slot is computed
+// externally by counting non-dragged items whose midpoint is above the
+// cursor. Hidden entries keep their relative positions. Returns nil if
+// the order didn't change.
+func moveToSlot(order []string, hidden map[string]bool, dragKey string, slot int) []string {
 	// Build visible-only order.
 	var visible []string
 	for _, k := range order {
@@ -84,35 +86,48 @@ func moveKeyBefore(order []string, dragKey, targetKey string, hidden map[string]
 		}
 	}
 
-	// Find positions in visible order.
-	srcIdx, tgtIdx := -1, -1
+	// Find current position.
+	srcIdx := -1
 	for i, k := range visible {
 		if k == dragKey {
 			srcIdx = i
-		}
-		if k == targetKey {
-			tgtIdx = i
+			break
 		}
 	}
-	if srcIdx < 0 || tgtIdx < 0 || srcIdx == tgtIdx {
+	if srcIdx < 0 {
 		return nil
 	}
 
-	// Remove dragKey from visible order.
-	vis := make([]string, 0, len(visible)-1)
-	vis = append(vis, visible[:srcIdx]...)
-	vis = append(vis, visible[srcIdx+1:]...)
+	// Remove dragKey.
+	without := make([]string, 0, len(visible)-1)
+	without = append(without, visible[:srcIdx]...)
+	without = append(without, visible[srcIdx+1:]...)
 
-	// Adjust target index after removal.
-	if tgtIdx > srcIdx {
-		tgtIdx--
+	// Clamp slot.
+	if slot < 0 {
+		slot = 0
+	}
+	if slot > len(without) {
+		slot = len(without)
 	}
 
-	// Insert dragKey before target.
+	// Insert at target slot.
 	reordered := make([]string, 0, len(visible))
-	reordered = append(reordered, vis[:tgtIdx]...)
+	reordered = append(reordered, without[:slot]...)
 	reordered = append(reordered, dragKey)
-	reordered = append(reordered, vis[tgtIdx:]...)
+	reordered = append(reordered, without[slot:]...)
+
+	// Check if order actually changed.
+	changed := false
+	for i := range visible {
+		if visible[i] != reordered[i] {
+			changed = true
+			break
+		}
+	}
+	if !changed {
+		return nil
+	}
 
 	// Rebuild full order preserving hidden entries' positions.
 	newOrder := make([]string, 0, len(order))

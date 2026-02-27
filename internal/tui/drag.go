@@ -144,7 +144,9 @@ func (m Model) handleMouseMove(msg tea.MouseMotionMsg) (Model, tea.Cmd) {
 }
 
 // liveReorderBar moves the dragged bar to the slot under the cursor,
-// causing other bars to shift like phone app icons.
+// causing other bars to shift like phone app icons. The target slot is
+// computed by counting non-dragged items whose midpoint is above the
+// cursor — this avoids oscillation from the dragged item's own geometry.
 func (m *Model) liveReorderBar() {
 	// Find which panel owns the dragged bar.
 	var order *[]string
@@ -170,27 +172,21 @@ func (m *Model) liveReorderBar() {
 		return
 	}
 
-	// Find target visual slot from cursor Y position.
-	targetVisIdx := len(bars) - 1
-	for i, bg := range bars {
+	// Count how many non-dragged items have their midpoint above the cursor.
+	// This gives the insertion slot without interference from the dragged
+	// item's own geometry.
+	slot := 0
+	for _, bg := range bars {
+		if bg.key == m.drag.barKey {
+			continue
+		}
 		midY := (bg.bounds.Min.Y + bg.bounds.Max.Y) / 2
-		if m.drag.currY < midY {
-			targetVisIdx = i
-			break
+		if m.drag.currY >= midY {
+			slot++
 		}
 	}
 
-	// Map visual index to the target key.
-	if targetVisIdx >= len(bars) {
-		targetVisIdx = len(bars) - 1
-	}
-	targetKey := bars[targetVisIdx].key
-	if targetKey == m.drag.barKey {
-		return
-	}
-
-	// Reorder: remove dragged key, insert before target key.
-	newOrder := moveKeyBefore(*order, m.drag.barKey, targetKey, m.layoutState.hidden)
+	newOrder := moveToSlot(*order, m.layoutState.hidden, m.drag.barKey, slot)
 	if newOrder != nil {
 		*order = newOrder
 	}
@@ -235,10 +231,11 @@ func (m Model) handleMouseUp(msg tea.MouseReleaseMsg) (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Bar dragged off screen edge → hide.
+	// Bar dragged to screen edge → hide. Terminal mouse coords are clamped
+	// to [0, width-1], so we use a small threshold from the edges.
 	if m.drag.phase == dragActive && m.drag.target == dragTargetBar {
 		mouse := msg.Mouse()
-		if mouse.X < 0 || mouse.X >= m.width {
+		if mouse.X <= 1 || mouse.X >= m.width-2 {
 			m.layoutState.hidden[m.drag.barKey] = true
 		}
 	}
