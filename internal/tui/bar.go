@@ -64,7 +64,7 @@ func RenderBar(width int, usagePct, glidePct, glideOpacity float64) string {
 
 	for i := 0; i < width; i++ {
 		switch {
-		case i == glidePos:
+		case i == glidePos && glideOpacity > 0:
 			flushEmpty(i)
 			// Interpolate glide foreground: barEmpty (#1E1028, 30,16,40) → glide (#F5F3FF, 245,243,255)
 			gr := uint8(30 + glideOpacity*(245-30))

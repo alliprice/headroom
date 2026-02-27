@@ -138,29 +138,23 @@ func (m Model) View() tea.View {
 			if !ok {
 				return usage, glide, 1.0
 			}
+			// Glide markers all fade in together over the first 200ms.
+			opacity := float64(elapsedMs) / 200.0
+			if opacity > 1 {
+				opacity = 1
+			}
+			// Bar sweep starts at bt.startMs (200ms+ to let glide appear first).
 			barElapsed := elapsedMs - bt.startMs
 			if barElapsed <= 0 {
-				return 0, 0, 0
+				return 0, bt.glide, opacity
 			}
-			// Sweep: 0→target over 1000ms with ease-out cubic.
 			sweepT := float64(barElapsed) / 1000.0
 			if sweepT > 1 {
 				sweepT = 1
 			}
 			eased := easeOutCubic(sweepT)
 			animUsage := bt.usage * eased
-			// Glide marker: hidden until sweep finishes, then fades in over 200ms.
-			var animGlide float64
-			var opacity float64
-			if barElapsed >= 1000 {
-				animGlide = bt.glide
-				fadeElapsed := barElapsed - 1000
-				opacity = float64(fadeElapsed) / 200.0
-				if opacity > 1 {
-					opacity = 1
-				}
-			}
-			return animUsage, animGlide, opacity
+			return animUsage, bt.glide, opacity
 		}
 	}
 

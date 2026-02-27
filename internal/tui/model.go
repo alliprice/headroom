@@ -257,8 +257,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.anim.barAnimating = true
 				m.anim.barStartFrame = m.sleepFrame
 				// Populate bar targets with 500ms stagger.
+				// First bar starts at 200ms (after glide markers finish fading in).
 				var targets []barAnimTarget
-				offset := 0
+				offset := 200
 				for _, cat := range m.categories {
 					usage := cat.Utilization
 					glide := parse.CalcGlideSlope(cat.ResetsAt, cat.WindowSeconds)
@@ -403,8 +404,8 @@ func (m Model) allBarsFinished() bool {
 	}
 	elapsedMs := (m.sleepFrame - m.anim.barStartFrame) * 100 // 100ms per frame
 	last := m.anim.barTargets[len(m.anim.barTargets)-1]
-	// Last bar needs: startMs + 1000ms sweep + 200ms glide fade.
-	return elapsedMs >= last.startMs+1200
+	// Last bar needs: startMs + 1000ms sweep (glide is already visible).
+	return elapsedMs >= last.startMs+1000
 }
 
 // handleIntervalInput processes keyboard input while in interval-prompt mode.
