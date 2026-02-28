@@ -25,11 +25,11 @@ func TestParseGemini_SingleBucket(t *testing.T) {
 		t.Fatalf("expected 1 category, got %d", len(cats))
 	}
 	c := cats[0]
-	if c.Key != "gemini_gemini-2.0-flash" {
-		t.Errorf("Key = %q, want %q", c.Key, "gemini_gemini-2.0-flash")
+	if c.Key != "gemini_flash" {
+		t.Errorf("Key = %q, want %q", c.Key, "gemini_flash")
 	}
-	if c.Name != "2.0 Flash" {
-		t.Errorf("Name = %q, want %q", c.Name, "2.0 Flash")
+	if c.Name != "Flash" {
+		t.Errorf("Name = %q, want %q", c.Name, "Flash")
 	}
 	// Utilization = (1 - 0.7) * 100 = 30
 	if c.Utilization < 29.9 || c.Utilization > 30.1 {
@@ -38,22 +38,33 @@ func TestParseGemini_SingleBucket(t *testing.T) {
 	if c.ResetsAt != "2025-06-16T12:00:00Z" {
 		t.Errorf("ResetsAt = %q, want %q", c.ResetsAt, "2025-06-16T12:00:00Z")
 	}
-	// Window: 24h = 86400s
 	if c.WindowSeconds != 86400 {
 		t.Errorf("WindowSeconds = %d, want 86400", c.WindowSeconds)
 	}
 }
 
-func TestParseGemini_MultipleBuckets(t *testing.T) {
+func TestParseGemini_FamilyDedup(t *testing.T) {
 	NowFunc = func() time.Time {
 		return time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
 	}
 	t.Cleanup(func() { NowFunc = time.Now })
 
+	// Multiple flash models collapse into one "flash" category.
+	// The most-used (lowest remaining) wins.
 	data := map[string]any{
 		"buckets": []any{
 			map[string]any{
 				"modelId":           "gemini-2.0-flash",
+				"remainingFraction": 0.8,
+				"resetTime":         "2025-06-16T12:00:00Z",
+			},
+			map[string]any{
+				"modelId":           "gemini-2.5-flash",
+				"remainingFraction": 0.6,
+				"resetTime":         "2025-06-16T12:00:00Z",
+			},
+			map[string]any{
+				"modelId":           "gemini-3-flash-preview",
 				"remainingFraction": 0.7,
 				"resetTime":         "2025-06-16T12:00:00Z",
 			},
@@ -66,15 +77,25 @@ func TestParseGemini_MultipleBuckets(t *testing.T) {
 	}
 	cats := ParseGemini(data)
 	if len(cats) != 2 {
-		t.Fatalf("expected 2 categories, got %d", len(cats))
+		t.Fatalf("expected 2 categories (flash + pro), got %d", len(cats))
 	}
-	if cats[0].Name != "2.0 Flash" {
-		t.Errorf("cats[0].Name = %q, want %q", cats[0].Name, "2.0 Flash")
+	// Flash: most used is 0.6 remaining = 40% utilization
+	if cats[0].Key != "gemini_flash" {
+		t.Errorf("cats[0].Key = %q, want %q", cats[0].Key, "gemini_flash")
 	}
-	if cats[1].Name != "2.5 Pro" {
-		t.Errorf("cats[1].Name = %q, want %q", cats[1].Name, "2.5 Pro")
+	if cats[0].Name != "Flash" {
+		t.Errorf("cats[0].Name = %q, want %q", cats[0].Name, "Flash")
 	}
-	// (1 - 0.4) * 100 = 60
+	if cats[0].Utilization < 39.9 || cats[0].Utilization > 40.1 {
+		t.Errorf("cats[0].Utilization = %f, want ~40", cats[0].Utilization)
+	}
+	// Pro: 0.4 remaining = 60% utilization
+	if cats[1].Key != "gemini_pro" {
+		t.Errorf("cats[1].Key = %q, want %q", cats[1].Key, "gemini_pro")
+	}
+	if cats[1].Name != "Pro" {
+		t.Errorf("cats[1].Name = %q, want %q", cats[1].Name, "Pro")
+	}
 	if cats[1].Utilization < 59.9 || cats[1].Utilization > 60.1 {
 		t.Errorf("cats[1].Utilization = %f, want ~60", cats[1].Utilization)
 	}
@@ -168,57 +189,54 @@ func TestParseGemini_VertexVariantsFiltered(t *testing.T) {
 				"modelId":           "gemini-2.5-pro",
 				"remainingFraction": 0.5,
 				"resetTime":         "2025-06-16T12:00:00Z",
-				"tokenType":         "REQUESTS",
 			},
 			map[string]any{
 				"modelId":           "gemini-2.5-pro_vertex",
 				"remainingFraction": 0.5,
 				"resetTime":         "2025-06-16T12:00:00Z",
-				"tokenType":         "REQUESTS",
 			},
 			map[string]any{
 				"modelId":           "gemini-2.0-flash",
 				"remainingFraction": 0.8,
 				"resetTime":         "2025-06-16T12:00:00Z",
-				"tokenType":         "REQUESTS",
 			},
 			map[string]any{
 				"modelId":           "gemini-2.0-flash_vertex",
 				"remainingFraction": 0.8,
 				"resetTime":         "2025-06-16T12:00:00Z",
-				"tokenType":         "REQUESTS",
 			},
 		},
 	}
 	cats := ParseGemini(data)
 	if len(cats) != 2 {
-		t.Fatalf("expected 2 categories (vertex filtered), got %d", len(cats))
+		t.Fatalf("expected 2 categories (vertex filtered, family deduped), got %d", len(cats))
 	}
-	if cats[0].Key != "gemini_gemini-2.5-pro" {
-		t.Errorf("cats[0].Key = %q, want %q", cats[0].Key, "gemini_gemini-2.5-pro")
+	if cats[0].Key != "gemini_pro" {
+		t.Errorf("cats[0].Key = %q, want %q", cats[0].Key, "gemini_pro")
 	}
-	if cats[1].Key != "gemini_gemini-2.0-flash" {
-		t.Errorf("cats[1].Key = %q, want %q", cats[1].Key, "gemini_gemini-2.0-flash")
+	if cats[1].Key != "gemini_flash" {
+		t.Errorf("cats[1].Key = %q, want %q", cats[1].Key, "gemini_flash")
 	}
 }
 
-func TestGeminiDisplayName(t *testing.T) {
+func TestGeminiFamily(t *testing.T) {
 	cases := []struct {
 		input string
 		want  string
 	}{
-		{"gemini-2.0-flash", "2.0 Flash"},
-		{"gemini-2.5-pro", "2.5 Pro"},
-		{"gemini-2.5-flash-lite", "2.5 Flash Lite"},
-		{"gemini-3-flash-preview", "3 Flash Preview"},
-		{"gemini-1.5-pro-latest", "1.5 Pro Latest"},
-		{"unknown-model", "Unknown Model"},
-		{"", ""},
+		{"gemini-2.0-flash", "flash"},
+		{"gemini-2.5-flash", "flash"},
+		{"gemini-2.5-flash-lite", "flash-lite"},
+		{"gemini-2.5-flash-lite_vertex", "flash-lite"},
+		{"gemini-3-flash-preview", "flash"},
+		{"gemini-2.5-pro", "pro"},
+		{"gemini-3-pro-preview", "pro"},
+		{"unknown-model", "unknown-model"},
 	}
 	for _, tc := range cases {
-		got := geminiDisplayName(tc.input)
+		got := geminiFamily(tc.input)
 		if got != tc.want {
-			t.Errorf("geminiDisplayName(%q) = %q, want %q", tc.input, got, tc.want)
+			t.Errorf("geminiFamily(%q) = %q, want %q", tc.input, got, tc.want)
 		}
 	}
 }

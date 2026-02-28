@@ -113,8 +113,8 @@ func mockFetch() tea.Cmd {
 				WindowSeconds: parse.WindowSevenDay,
 			},
 			{
-				Key:           "gemini_gemini-2.0-flash",
-				Name:          "2.0 Flash",
+				Key:           "gemini_flash",
+				Name:          "Flash",
 				Utilization:   30 + rand.Float64()*40,
 				ResetsAt:      now.Add(time.Duration(12+rand.Intn(12)) * time.Hour).Format(time.RFC3339),
 				WindowSeconds: 86400,
