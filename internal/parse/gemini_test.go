@@ -104,7 +104,7 @@ func TestParseGemini_ZeroRemaining(t *testing.T) {
 	}
 }
 
-func TestParseGemini_FullRemaining(t *testing.T) {
+func TestParseGemini_FullRemaining_Skipped(t *testing.T) {
 	NowFunc = func() time.Time {
 		return time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
 	}
@@ -120,11 +120,8 @@ func TestParseGemini_FullRemaining(t *testing.T) {
 		},
 	}
 	cats := ParseGemini(data)
-	if len(cats) != 1 {
-		t.Fatalf("expected 1 category, got %d", len(cats))
-	}
-	if cats[0].Utilization > 0.1 {
-		t.Errorf("Utilization = %f, want 0", cats[0].Utilization)
+	if len(cats) != 0 {
+		t.Fatalf("expected 0 categories (0%% utilization skipped), got %d", len(cats))
 	}
 }
 
