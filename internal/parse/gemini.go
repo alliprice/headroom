@@ -2,7 +2,6 @@ package parse
 
 import (
 	"strings"
-	"time"
 	"unicode"
 )
 
@@ -110,15 +109,8 @@ func ParseGemini(data map[string]any) []Category {
 			name = dn
 		}
 
+		// Gemini quotas always reset on a 24-hour cycle.
 		windowSeconds := 86400
-		if fd.resetTime != "" {
-			if t, err := time.Parse(time.RFC3339, fd.resetTime); err == nil {
-				secs := int(t.Sub(NowFunc()).Seconds())
-				if secs > 0 {
-					windowSeconds = secs
-				}
-			}
-		}
 
 		categories = append(categories, Category{
 			Key:           "gemini_" + family,

@@ -242,7 +242,7 @@ func TestGeminiFamily(t *testing.T) {
 }
 
 func TestParseGemini_WindowComputation(t *testing.T) {
-	// Freeze time to 12:00 UTC; reset at 18:00 UTC = 6 hours = 21600s
+	// Regardless of when we check or when the reset is, window is always 24h.
 	NowFunc = func() time.Time {
 		return time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
 	}
@@ -261,7 +261,7 @@ func TestParseGemini_WindowComputation(t *testing.T) {
 	if len(cats) != 1 {
 		t.Fatalf("expected 1 category, got %d", len(cats))
 	}
-	if cats[0].WindowSeconds != 21600 {
-		t.Errorf("WindowSeconds = %d, want 21600", cats[0].WindowSeconds)
+	if cats[0].WindowSeconds != 86400 {
+		t.Errorf("WindowSeconds = %d, want 86400", cats[0].WindowSeconds)
 	}
 }
