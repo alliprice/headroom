@@ -140,6 +140,8 @@ func FetchGemini() (map[string]any, error) {
 	if geminiProjectID == "" {
 		payload := map[string]any{
 			"metadata": map[string]any{
+				"ideType":    "IDE_UNSPECIFIED",
+				"platform":   "PLATFORM_UNSPECIFIED",
 				"pluginType": "GEMINI",
 			},
 		}
@@ -147,7 +149,7 @@ func FetchGemini() (map[string]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		pid, _ := data["project"].(string)
+		pid, _ := data["cloudaicompanionProject"].(string)
 		if pid == "" {
 			return nil, fmt.Errorf("Gemini API: no project ID in loadCodeAssist response")
 		}
