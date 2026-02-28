@@ -49,6 +49,20 @@ func assertGolden(t *testing.T, name, got string) {
 
 var frozenTime = time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
 
+// freezeTimeAndTZ pins NowFunc and the local timezone for golden test
+// determinism. The reset-time formatter uses Local(), so we need TZ=UTC
+// to get reproducible output regardless of the machine's timezone.
+func freezeTimeAndTZ(t *testing.T) {
+	t.Helper()
+	parse.NowFunc = func() time.Time { return frozenTime }
+	origLocal := time.Local
+	time.Local = time.UTC
+	t.Cleanup(func() {
+		parse.NowFunc = time.Now
+		time.Local = origLocal
+	})
+}
+
 func TestRenderBar_Golden(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -186,8 +200,7 @@ func viewString(m Model) string {
 }
 
 func TestView_RunningDual(t *testing.T) {
-	parse.NowFunc = func() time.Time { return frozenTime }
-	t.Cleanup(func() { parse.NowFunc = time.Now })
+	freezeTimeAndTZ(t)
 
 	cats := append(testCategories(), testCodexCategories()...)
 	extra := map[string]*parse.ExtraUsage{
@@ -198,8 +211,7 @@ func TestView_RunningDual(t *testing.T) {
 }
 
 func TestView_RunningSingle(t *testing.T) {
-	parse.NowFunc = func() time.Time { return frozenTime }
-	t.Cleanup(func() { parse.NowFunc = time.Now })
+	freezeTimeAndTZ(t)
 
 	extra := map[string]*parse.ExtraUsage{
 		"claude": testExtraUsage(),
@@ -209,8 +221,7 @@ func TestView_RunningSingle(t *testing.T) {
 }
 
 func TestView_RunningSmall(t *testing.T) {
-	parse.NowFunc = func() time.Time { return frozenTime }
-	t.Cleanup(func() { parse.NowFunc = time.Now })
+	freezeTimeAndTZ(t)
 
 	cats := append(testCategories(), testCodexCategories()...)
 	extra := map[string]*parse.ExtraUsage{
@@ -233,8 +244,7 @@ func TestView_Sleeping(t *testing.T) {
 }
 
 func TestView_Error(t *testing.T) {
-	parse.NowFunc = func() time.Time { return frozenTime }
-	t.Cleanup(func() { parse.NowFunc = time.Now })
+	freezeTimeAndTZ(t)
 
 	extra := map[string]*parse.ExtraUsage{
 		"claude": testExtraUsage(),
@@ -245,8 +255,7 @@ func TestView_Error(t *testing.T) {
 }
 
 func TestView_Empty(t *testing.T) {
-	parse.NowFunc = func() time.Time { return frozenTime }
-	t.Cleanup(func() { parse.NowFunc = time.Now })
+	freezeTimeAndTZ(t)
 
 	m := buildTestModel(120, 40, stateRunning, nil, nil)
 	assertGolden(t, "empty_120x40", viewString(m))
