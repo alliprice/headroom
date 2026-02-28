@@ -92,14 +92,6 @@ func mergeOrder(existing, incoming []string) []string {
 	return existing
 }
 
-// hideAllBarsInPanel hides every bar that belongs to the given panel.
-func (ls *layoutState) hideAllBarsInPanel(panelID string) {
-	order := ls.catOrder[panelID]
-	for _, k := range order {
-		ls.hidden[k] = true
-	}
-}
-
 // clone returns a deep copy of the layout state.
 func (ls layoutState) clone() layoutState {
 	po := make([]string, len(ls.panelOrder))
@@ -130,38 +122,25 @@ func trashZoneRect(w, h int) image.Rectangle {
 	return image.Rect(x1, y1, x1+tzWidth, y1+tzHeight)
 }
 
-// moveToSlot reorders a full order slice by placing dragKey at the given
-// slot index among visible (non-hidden) entries. The slot is computed
-// externally by counting non-dragged items whose midpoint is above the
-// cursor. Hidden entries keep their relative positions. Returns nil if
-// the order didn't change.
-func moveToSlot(order []string, hidden map[string]bool, dragKey string, slot int) []string {
-	// Build visible-only order.
-	var visible []string
-	for _, k := range order {
-		if !hidden[k] {
-			visible = append(visible, k)
-		}
-	}
-
-	// Find current position.
+// moveToSlot reorders a slice by placing dragKey at the given slot index.
+// Returns nil if the order didn't change, dragKey wasn't found, or the
+// slice has fewer than 2 elements.
+func moveToSlot(order []string, dragKey string, slot int) []string {
 	srcIdx := -1
-	for i, k := range visible {
+	for i, k := range order {
 		if k == dragKey {
 			srcIdx = i
 			break
 		}
 	}
-	if srcIdx < 0 {
+	if srcIdx < 0 || len(order) < 2 {
 		return nil
 	}
 
-	// Remove dragKey.
-	without := make([]string, 0, len(visible)-1)
-	without = append(without, visible[:srcIdx]...)
-	without = append(without, visible[srcIdx+1:]...)
+	without := make([]string, 0, len(order)-1)
+	without = append(without, order[:srcIdx]...)
+	without = append(without, order[srcIdx+1:]...)
 
-	// Clamp slot.
 	if slot < 0 {
 		slot = 0
 	}
@@ -169,34 +148,15 @@ func moveToSlot(order []string, hidden map[string]bool, dragKey string, slot int
 		slot = len(without)
 	}
 
-	// Insert at target slot.
-	reordered := make([]string, 0, len(visible))
+	reordered := make([]string, 0, len(order))
 	reordered = append(reordered, without[:slot]...)
 	reordered = append(reordered, dragKey)
 	reordered = append(reordered, without[slot:]...)
 
-	// Check if order actually changed.
-	changed := false
-	for i := range visible {
-		if visible[i] != reordered[i] {
-			changed = true
-			break
+	for i := range order {
+		if order[i] != reordered[i] {
+			return reordered
 		}
 	}
-	if !changed {
-		return nil
-	}
-
-	// Rebuild full order preserving hidden entries' positions.
-	newOrder := make([]string, 0, len(order))
-	vi := 0
-	for _, k := range order {
-		if hidden[k] {
-			newOrder = append(newOrder, k)
-		} else {
-			newOrder = append(newOrder, reordered[vi])
-			vi++
-		}
-	}
-	return newOrder
+	return nil
 }

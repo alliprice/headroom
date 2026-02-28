@@ -145,16 +145,31 @@ func (m Model) handleMouseMove(msg tea.MouseMotionMsg) (Model, tea.Cmd) {
 func (m *Model) liveReorderBar() {
 	pid := m.drag.panelID
 	bars := m.layout.bars[pid]
-	order := m.layoutState.catOrder[pid]
+	fullOrder := m.layoutState.catOrder[pid]
 
-	if order == nil || len(bars) < 2 {
+	if fullOrder == nil || len(bars) < 2 {
 		return
 	}
 
-	// Count how many non-dragged items have their midpoint above the cursor.
+	// Build set of keys that are in fullOrder for fast lookup.
+	inOrder := make(map[string]bool, len(fullOrder))
+	for _, k := range fullOrder {
+		inOrder[k] = true
+	}
+
+	// Build visible order from layout geometry, restricted to keys in fullOrder
+	// (already excludes hidden; extra synthetic bars like extra_usage are omitted).
+	var visible []string
+	for _, bg := range bars {
+		if inOrder[bg.key] {
+			visible = append(visible, bg.key)
+		}
+	}
+
+	// Count how many non-dragged items (in fullOrder) have their midpoint above the cursor.
 	slot := 0
 	for _, bg := range bars {
-		if bg.key == m.drag.barKey {
+		if bg.key == m.drag.barKey || !inOrder[bg.key] {
 			continue
 		}
 		midY := (bg.bounds.Min.Y + bg.bounds.Max.Y) / 2
@@ -163,10 +178,23 @@ func (m *Model) liveReorderBar() {
 		}
 	}
 
-	newOrder := moveToSlot(order, m.layoutState.hidden, m.drag.barKey, slot)
-	if newOrder != nil {
-		m.layoutState.catOrder[pid] = newOrder
+	newVisible := moveToSlot(visible, m.drag.barKey, slot)
+	if newVisible == nil {
+		return
 	}
+
+	// Rebuild full order: interleave new visible order with hidden entries.
+	rebuilt := make([]string, 0, len(fullOrder))
+	vi := 0
+	for _, k := range fullOrder {
+		if m.layoutState.hidden[k] {
+			rebuilt = append(rebuilt, k)
+		} else {
+			rebuilt = append(rebuilt, newVisible[vi])
+			vi++
+		}
+	}
+	m.layoutState.catOrder[pid] = rebuilt
 }
 
 // liveReorderPanel moves the dragged panel to the slot under the cursor.

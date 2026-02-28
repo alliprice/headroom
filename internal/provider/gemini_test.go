@@ -1,16 +1,10 @@
-package parse
+package provider
 
 import (
 	"testing"
-	"time"
 )
 
 func TestParseGemini_SingleBucket(t *testing.T) {
-	NowFunc = func() time.Time {
-		return time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
-	}
-	t.Cleanup(func() { NowFunc = time.Now })
-
 	data := map[string]any{
 		"buckets": []any{
 			map[string]any{
@@ -20,7 +14,7 @@ func TestParseGemini_SingleBucket(t *testing.T) {
 			},
 		},
 	}
-	cats := ParseGemini(data)
+	cats := parseGemini(data)
 	if len(cats) != 1 {
 		t.Fatalf("expected 1 category, got %d", len(cats))
 	}
@@ -44,11 +38,6 @@ func TestParseGemini_SingleBucket(t *testing.T) {
 }
 
 func TestParseGemini_FamilyDedup(t *testing.T) {
-	NowFunc = func() time.Time {
-		return time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
-	}
-	t.Cleanup(func() { NowFunc = time.Now })
-
 	// Multiple flash models collapse into one "flash" category.
 	// The most-used (lowest remaining) wins.
 	data := map[string]any{
@@ -75,7 +64,7 @@ func TestParseGemini_FamilyDedup(t *testing.T) {
 			},
 		},
 	}
-	cats := ParseGemini(data)
+	cats := parseGemini(data)
 	if len(cats) != 2 {
 		t.Fatalf("expected 2 categories (flash + pro), got %d", len(cats))
 	}
@@ -102,11 +91,6 @@ func TestParseGemini_FamilyDedup(t *testing.T) {
 }
 
 func TestParseGemini_ZeroRemaining(t *testing.T) {
-	NowFunc = func() time.Time {
-		return time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
-	}
-	t.Cleanup(func() { NowFunc = time.Now })
-
 	data := map[string]any{
 		"buckets": []any{
 			map[string]any{
@@ -116,7 +100,7 @@ func TestParseGemini_ZeroRemaining(t *testing.T) {
 			},
 		},
 	}
-	cats := ParseGemini(data)
+	cats := parseGemini(data)
 	if len(cats) != 1 {
 		t.Fatalf("expected 1 category, got %d", len(cats))
 	}
@@ -126,11 +110,6 @@ func TestParseGemini_ZeroRemaining(t *testing.T) {
 }
 
 func TestParseGemini_FullRemaining_Skipped(t *testing.T) {
-	NowFunc = func() time.Time {
-		return time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
-	}
-	t.Cleanup(func() { NowFunc = time.Now })
-
 	data := map[string]any{
 		"buckets": []any{
 			map[string]any{
@@ -140,7 +119,7 @@ func TestParseGemini_FullRemaining_Skipped(t *testing.T) {
 			},
 		},
 	}
-	cats := ParseGemini(data)
+	cats := parseGemini(data)
 	if len(cats) != 0 {
 		t.Fatalf("expected 0 categories (0%% utilization skipped), got %d", len(cats))
 	}
@@ -148,7 +127,7 @@ func TestParseGemini_FullRemaining_Skipped(t *testing.T) {
 
 func TestParseGemini_NoBucketsKey(t *testing.T) {
 	data := map[string]any{"other": "stuff"}
-	cats := ParseGemini(data)
+	cats := parseGemini(data)
 	if cats != nil {
 		t.Errorf("expected nil, got %v", cats)
 	}
@@ -156,7 +135,7 @@ func TestParseGemini_NoBucketsKey(t *testing.T) {
 
 func TestParseGemini_EmptyBuckets(t *testing.T) {
 	data := map[string]any{"buckets": []any{}}
-	cats := ParseGemini(data)
+	cats := parseGemini(data)
 	if len(cats) != 0 {
 		t.Errorf("expected 0 categories, got %d", len(cats))
 	}
@@ -171,18 +150,13 @@ func TestParseGemini_MissingRemainingFraction(t *testing.T) {
 			},
 		},
 	}
-	cats := ParseGemini(data)
+	cats := parseGemini(data)
 	if len(cats) != 0 {
 		t.Errorf("expected 0 categories (missing remainingFraction), got %d", len(cats))
 	}
 }
 
 func TestParseGemini_VertexVariantsFiltered(t *testing.T) {
-	NowFunc = func() time.Time {
-		return time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
-	}
-	t.Cleanup(func() { NowFunc = time.Now })
-
 	data := map[string]any{
 		"buckets": []any{
 			map[string]any{
@@ -207,7 +181,7 @@ func TestParseGemini_VertexVariantsFiltered(t *testing.T) {
 			},
 		},
 	}
-	cats := ParseGemini(data)
+	cats := parseGemini(data)
 	if len(cats) != 2 {
 		t.Fatalf("expected 2 categories (vertex filtered, family deduped), got %d", len(cats))
 	}
@@ -242,12 +216,6 @@ func TestGeminiFamily(t *testing.T) {
 }
 
 func TestParseGemini_WindowComputation(t *testing.T) {
-	// Freeze time to 12:00 UTC; reset at 18:00 UTC = 6 hours = 21600s
-	NowFunc = func() time.Time {
-		return time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
-	}
-	t.Cleanup(func() { NowFunc = time.Now })
-
 	data := map[string]any{
 		"buckets": []any{
 			map[string]any{
@@ -257,11 +225,11 @@ func TestParseGemini_WindowComputation(t *testing.T) {
 			},
 		},
 	}
-	cats := ParseGemini(data)
+	cats := parseGemini(data)
 	if len(cats) != 1 {
 		t.Fatalf("expected 1 category, got %d", len(cats))
 	}
-	if cats[0].WindowSeconds != 21600 {
-		t.Errorf("WindowSeconds = %d, want 21600", cats[0].WindowSeconds)
+	if cats[0].WindowSeconds != 86400 {
+		t.Errorf("WindowSeconds = %d, want 86400", cats[0].WindowSeconds)
 	}
 }

@@ -1,4 +1,4 @@
-package fetch
+package provider
 
 import (
 	"encoding/json"
@@ -11,21 +11,21 @@ import (
 //
 // Run explicitly with:
 //
-//	go test ./internal/fetch/ -run TestGeminiFetchIntegration -v
+//	go test ./internal/provider/ -run TestGeminiFetchIntegration -v
 func TestGeminiFetchIntegration(t *testing.T) {
-	if _, err := os.Stat(GeminiCredsPath()); err != nil {
-		t.Skipf("skipping: no Gemini credentials at %s", GeminiCredsPath())
+	if _, err := os.Stat(geminiCredsPath()); err != nil {
+		t.Skipf("skipping: no Gemini credentials at %s", geminiCredsPath())
 	}
 
 	// Reset cached project ID so we test the full flow.
 	geminiProjectID = ""
 
-	data, err := FetchGemini()
+	data, err := fetchGeminiAPI()
 	if err != nil {
-		t.Fatalf("FetchGemini() error: %v", err)
+		t.Fatalf("fetchGeminiAPI() error: %v", err)
 	}
 	if data == nil {
-		t.Fatal("FetchGemini() returned nil data")
+		t.Fatal("fetchGeminiAPI() returned nil data")
 	}
 
 	// Dump the raw response so we can see the actual shape.
@@ -74,8 +74,8 @@ func TestGeminiFetchIntegration(t *testing.T) {
 // TestGeminiLoadCodeAssistIntegration tests just the loadCodeAssist call
 // to verify we extract the project ID correctly.
 func TestGeminiLoadCodeAssistIntegration(t *testing.T) {
-	if _, err := os.Stat(GeminiCredsPath()); err != nil {
-		t.Skipf("skipping: no Gemini credentials at %s", GeminiCredsPath())
+	if _, err := os.Stat(geminiCredsPath()); err != nil {
+		t.Skipf("skipping: no Gemini credentials at %s", geminiCredsPath())
 	}
 
 	creds, err := readGeminiCreds()
@@ -104,13 +104,13 @@ func TestGeminiLoadCodeAssistIntegration(t *testing.T) {
 
 	pid, ok := data["cloudaicompanionProject"].(string)
 	if !ok || pid == "" {
-		t.Fatalf("no 'cloudaicompanionProject' in response; keys present: %v", keys(data))
+		t.Fatalf("no 'cloudaicompanionProject' in response; keys present: %v", mapKeys(data))
 	}
 	t.Logf("project ID: %s", pid)
 }
 
-// keys returns the top-level keys of a map for diagnostic logging.
-func keys(m map[string]any) []string {
+// mapKeys returns the top-level keys of a map for diagnostic logging.
+func mapKeys(m map[string]any) []string {
 	ks := make([]string, 0, len(m))
 	for k := range m {
 		ks = append(ks, k)

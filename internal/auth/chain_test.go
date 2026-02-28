@@ -6,18 +6,16 @@ import (
 )
 
 type mockProvider struct {
-	n   string
 	tok string
 	err error
 }
 
-func (m mockProvider) name() string             { return m.n }
 func (m mockProvider) getToken() (string, error) { return m.tok, m.err }
 
 func TestChainFirstWins(t *testing.T) {
 	chain := []credentialProvider{
-		mockProvider{n: "a", tok: "token-a"},
-		mockProvider{n: "b", tok: "token-b"},
+		mockProvider{tok: "token-a"},
+		mockProvider{tok: "token-b"},
 	}
 	tok, err := getTokenFromChain(chain)
 	if err != nil {
@@ -30,8 +28,8 @@ func TestChainFirstWins(t *testing.T) {
 
 func TestChainSkipsFailures(t *testing.T) {
 	chain := []credentialProvider{
-		mockProvider{n: "fail", err: fmt.Errorf("nope")},
-		mockProvider{n: "ok", tok: "token-ok"},
+		mockProvider{err: fmt.Errorf("nope")},
+		mockProvider{tok: "token-ok"},
 	}
 	tok, err := getTokenFromChain(chain)
 	if err != nil {
@@ -44,8 +42,8 @@ func TestChainSkipsFailures(t *testing.T) {
 
 func TestChainAllFail(t *testing.T) {
 	chain := []credentialProvider{
-		mockProvider{n: "a", err: fmt.Errorf("fail-a")},
-		mockProvider{n: "b", err: fmt.Errorf("fail-b")},
+		mockProvider{err: fmt.Errorf("fail-a")},
+		mockProvider{err: fmt.Errorf("fail-b")},
 	}
 	_, err := getTokenFromChain(chain)
 	if err == nil {
