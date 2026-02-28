@@ -956,7 +956,7 @@ func TestLiveReorderPanel(t *testing.T) {
 		{
 			name:          "Bottom panel dragged above midpoint swaps",
 			panelID:       "codex",
-			currY:         10, // above midpoint
+			currY:         5, // above claude's midpoint (7)
 			expectedOrder: []string{"codex", "claude"},
 		},
 		{

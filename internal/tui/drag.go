@@ -169,52 +169,61 @@ func (m *Model) liveReorderBar() {
 	}
 }
 
-// liveReorderPanel swaps panel order when the cursor crosses the midpoint
-// of the total panel area.
+// liveReorderPanel moves the dragged panel to the slot under the cursor.
+// Slot is determined by counting non-dragged panels whose midpoint is above
+// the cursor - same approach as bar reordering.
 func (m *Model) liveReorderPanel() {
-	if len(m.layoutState.panelOrder) < 2 {
+	order := m.layoutState.panelOrder
+	if len(order) < 2 {
 		return
 	}
 
-	// Compute midpoint of the total panel area (stable regardless of order).
-	var areaMinY, areaMaxY int
-	first := true
-	for _, pid := range m.layoutState.panelOrder {
-		if pRect, ok := m.layout.panels[pid]; ok {
-			if first {
-				areaMinY = pRect.Min.Y
-				areaMaxY = pRect.Max.Y
-				first = false
-			} else {
-				if pRect.Min.Y < areaMinY {
-					areaMinY = pRect.Min.Y
-				}
-				if pRect.Max.Y > areaMaxY {
-					areaMaxY = pRect.Max.Y
-				}
-			}
+	// Count how many non-dragged panels have their midpoint above the cursor.
+	slot := 0
+	for _, pid := range order {
+		if pid == m.drag.panelID {
+			continue
+		}
+		pRect, ok := m.layout.panels[pid]
+		if !ok {
+			continue
+		}
+		midY := (pRect.Min.Y + pRect.Max.Y) / 2
+		if m.drag.currY >= midY {
+			slot++
 		}
 	}
-	midY := (areaMinY + areaMaxY) / 2
 
-	// Find current position of the dragged panel.
-	currentIdx := 0
-	for i, pid := range m.layoutState.panelOrder {
+	// Find current position.
+	currentIdx := -1
+	for i, pid := range order {
 		if pid == m.drag.panelID {
 			currentIdx = i
 			break
 		}
 	}
-
-	if currentIdx == 0 && m.drag.currY >= midY {
-		// Top panel dragged to or below midpoint → swap.
-		m.layoutState.panelOrder[0], m.layoutState.panelOrder[1] =
-			m.layoutState.panelOrder[1], m.layoutState.panelOrder[0]
-	} else if currentIdx == 1 && m.drag.currY < midY {
-		// Bottom panel dragged above midpoint → swap.
-		m.layoutState.panelOrder[0], m.layoutState.panelOrder[1] =
-			m.layoutState.panelOrder[1], m.layoutState.panelOrder[0]
+	if currentIdx < 0 {
+		return
 	}
+
+	// Remove dragged panel and reinsert at target slot.
+	without := make([]string, 0, len(order)-1)
+	without = append(without, order[:currentIdx]...)
+	without = append(without, order[currentIdx+1:]...)
+
+	if slot < 0 {
+		slot = 0
+	}
+	if slot > len(without) {
+		slot = len(without)
+	}
+
+	reordered := make([]string, 0, len(order))
+	reordered = append(reordered, without[:slot]...)
+	reordered = append(reordered, m.drag.panelID)
+	reordered = append(reordered, without[slot:]...)
+
+	m.layoutState.panelOrder = reordered
 }
 
 // handleMouseUp processes mouse release. Reordering already happened live
