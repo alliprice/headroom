@@ -2,6 +2,7 @@ package tui
 
 import (
 	"image"
+	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/key"
@@ -434,6 +435,16 @@ func (m Model) groupCatsByProvider() map[string][]string {
 	}
 	for _, c := range m.categories {
 		pid, ok := keyToProvider[c.Key]
+		if !ok {
+			// Prefix-based fallback: "gemini_foo" routes to the "gemini" provider.
+			for _, p := range provider.All {
+				if strings.HasPrefix(c.Key, p.ID+"_") {
+					pid = p.ID
+					ok = true
+					break
+				}
+			}
+		}
 		if !ok {
 			// Default to first provider for unknown keys.
 			pid = provider.All[0].ID

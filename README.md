@@ -4,13 +4,13 @@
 
 ![demo](demo.gif)
 
-a terminal dashboard for your claude & codex rate limits. it floats above your workflow like a neon sign above a rain-slicked boulevard at 3am. you glance up. the bars tell you everything. you keep typing.
+a terminal dashboard for the invisible walls between you and the machines that write your code. it floats above your workflow like a neon sign above a rain-slicked boulevard at 3am. you glance up. the bars tell you everything. you keep typing.
 
 ## the vibe
 
 headroom renders your API usage as living progress bars over a procedural plasma background. it breathes. it pulses. it knows when you're looking and when you've walked away.
 
-- **session & weekly limits** for claude and codex, side by side
+- **session & weekly limits** for whatever's installed. it checks the usual hiding spots.
 - **extra usage tracking** — your monthly billing burn rate, visualized
 - **glide slopes** — faint markers showing where usage *should* be if you're pacing evenly through the window. are you ahead of the curve or behind it? the bar knows. the bar always knows.
 - **drag to reorder** — grab any bar or panel and rearrange. hold a bar over the trash icon and let go. it's gone. press `0` to bring everything back from the void.
@@ -36,7 +36,7 @@ go build -o headroom .
 ./headroom
 ```
 
-that's it. headroom reads your claude session cookie from `~/.claude/credentials.json` (the same one claude code uses). no config files. no env vars. no yaml. just vibes.
+that's it. headroom finds your credentials where they live - session cookies, oauth tokens, app servers. if the tool left a trail, headroom follows it. no config files. no env vars. no yaml. just vibes.
 
 ### flags
 
@@ -58,7 +58,7 @@ that's it. headroom reads your claude session cookie from `~/.claude/credentials
 
 - go 1.24+
 - a terminal that supports 256 colors and mouse events
-- an active claude pro/team/enterprise subscription
+- at least one subscription to something that writes code and counts the asks
 - the low hum of a mass-produced future
 
 ## architecture
@@ -66,8 +66,9 @@ that's it. headroom reads your claude session cookie from `~/.claude/credentials
 ```
 internal/
   auth/     — credential extraction from claude code's session store
-  fetch/    — HTTP calls to the claude and codex usage APIs
+  fetch/    — HTTP calls to provider usage APIs. each one a different dialect.
   parse/    — response parsing, glide slope math, time formatting
+  provider/ — provider registry. declarative structs, not interfaces.
   tui/      — the whole show. bubbletea model, plasma renderer,
               drag system, layout engine, animation choreography
 ```

@@ -155,7 +155,9 @@ func (m Model) View() tea.View {
 	var partHeights []int             // actual rendered height of each panel
 	eachHeight := 0
 	if len(panelDefs) > 1 {
-		eachHeight = (panelAreaHeight - vFrame*2 - 1) / 2
+		n := len(panelDefs)
+		gaps := n - 1
+		eachHeight = (panelAreaHeight - vFrame*n - gaps) / n
 		var parts []string
 		for _, pd := range panelDefs {
 			var content string
@@ -172,7 +174,15 @@ func (m Model) View() tea.View {
 			panelBarInfos = append(panelBarInfos, barInfos)
 			panelPIDs = append(panelPIDs, pd.pid)
 		}
-		panels = lipgloss.JoinVertical(lipgloss.Left, parts[0], "", parts[1])
+		// Join all panels with a blank-line gap between each pair.
+		var joinArgs []string
+		for i, p := range parts {
+			if i > 0 {
+				joinArgs = append(joinArgs, "")
+			}
+			joinArgs = append(joinArgs, p)
+		}
+		panels = lipgloss.JoinVertical(lipgloss.Left, joinArgs...)
 	} else if len(panelDefs) == 1 {
 		pd := panelDefs[0]
 		var content string
@@ -241,12 +251,10 @@ func (m Model) View() tea.View {
 			if len(panelDefs) > 1 {
 				for pi := range panelDefs {
 					pid := panelPIDs[pi]
-					var pyOff int
-					if pi == 0 {
-						pyOff = panelY
-					} else {
-						// Second panel offset: actual first panel height + 1 gap row
-						pyOff = panelY + partHeights[0] + 1
+					// Sum all preceding panel heights + 1 gap row each.
+					pyOff := panelY
+					for j := 0; j < pi; j++ {
+						pyOff += partHeights[j] + 1
 					}
 
 					if pi < len(panelBarInfos) {
