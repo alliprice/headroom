@@ -37,20 +37,17 @@ func (c hidePanelCmd) Undo(ls *layoutState) {
 	}
 }
 
-// reorderPanelsCmd captures a panel reorder (any number of panels).
-type reorderPanelsCmd struct {
-	oldOrder []string
-	newOrder []string
+// swapPanelsCmd swaps panelOrder[0] and panelOrder[1]. Self-inverse.
+type swapPanelsCmd struct{}
+
+func (c swapPanelsCmd) Execute(ls *layoutState) {
+	if len(ls.panelOrder) >= 2 {
+		ls.panelOrder[0], ls.panelOrder[1] = ls.panelOrder[1], ls.panelOrder[0]
+	}
 }
 
-func (c reorderPanelsCmd) Execute(ls *layoutState) {
-	ls.panelOrder = make([]string, len(c.newOrder))
-	copy(ls.panelOrder, c.newOrder)
-}
-
-func (c reorderPanelsCmd) Undo(ls *layoutState) {
-	ls.panelOrder = make([]string, len(c.oldOrder))
-	copy(ls.panelOrder, c.oldOrder)
+func (c swapPanelsCmd) Undo(ls *layoutState) {
+	c.Execute(ls) // self-inverse
 }
 
 // reorderBarCmd captures a bar reorder within a panel.

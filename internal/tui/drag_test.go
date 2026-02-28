@@ -17,7 +17,6 @@ func TestMoveToSlot(t *testing.T) {
 	tests := []struct {
 		name     string
 		order    []string
-		hidden   map[string]bool
 		dragKey  string
 		slot     int
 		expected []string
@@ -26,7 +25,6 @@ func TestMoveToSlot(t *testing.T) {
 		{
 			name:     "Forward: drag first to last",
 			order:    []string{"a", "b", "c"},
-			hidden:   map[string]bool{},
 			dragKey:  "a",
 			slot:     2,
 			expected: []string{"b", "c", "a"},
@@ -34,7 +32,6 @@ func TestMoveToSlot(t *testing.T) {
 		{
 			name:     "Backward: drag last to first",
 			order:    []string{"a", "b", "c"},
-			hidden:   map[string]bool{},
 			dragKey:  "c",
 			slot:     0,
 			expected: []string{"c", "a", "b"},
@@ -42,7 +39,6 @@ func TestMoveToSlot(t *testing.T) {
 		{
 			name:    "Same slot returns nil",
 			order:   []string{"a", "b", "c"},
-			hidden:  map[string]bool{},
 			dragKey: "a",
 			slot:    0,
 			wantNil: true,
@@ -50,7 +46,6 @@ func TestMoveToSlot(t *testing.T) {
 		{
 			name:     "Slot beyond bounds clamped",
 			order:    []string{"a", "b", "c"},
-			hidden:   map[string]bool{},
 			dragKey:  "a",
 			slot:     10,
 			expected: []string{"b", "c", "a"},
@@ -58,7 +53,6 @@ func TestMoveToSlot(t *testing.T) {
 		{
 			name:     "Negative slot clamped to 0",
 			order:    []string{"a", "b", "c"},
-			hidden:   map[string]bool{},
 			dragKey:  "c",
 			slot:     -5,
 			expected: []string{"c", "a", "b"},
@@ -66,37 +60,25 @@ func TestMoveToSlot(t *testing.T) {
 		{
 			name:    "Single item returns nil",
 			order:   []string{"a"},
-			hidden:  map[string]bool{},
 			dragKey: "a",
 			slot:    0,
 			wantNil: true,
 		},
 		{
-			name:     "Hidden entries preserved",
-			order:    []string{"a", "hidden", "b", "c"},
-			hidden:   map[string]bool{"hidden": true},
-			dragKey:  "a",
-			slot:     2,
-			expected: []string{"b", "hidden", "c", "a"},
-		},
-		{
 			name:    "dragKey not found returns nil",
 			order:   []string{"a", "b", "c"},
-			hidden:  map[string]bool{},
 			dragKey: "x",
 			wantNil: true,
 		},
 		{
 			name:    "Empty order returns nil",
 			order:   []string{},
-			hidden:  map[string]bool{},
 			dragKey: "a",
 			wantNil: true,
 		},
 		{
 			name:     "Middle to first",
 			order:    []string{"a", "b", "c"},
-			hidden:   map[string]bool{},
 			dragKey:  "b",
 			slot:     0,
 			expected: []string{"b", "a", "c"},
@@ -104,7 +86,6 @@ func TestMoveToSlot(t *testing.T) {
 		{
 			name:     "Middle to last",
 			order:    []string{"a", "b", "c"},
-			hidden:   map[string]bool{},
 			dragKey:  "b",
 			slot:     2,
 			expected: []string{"a", "c", "b"},
@@ -113,7 +94,7 @@ func TestMoveToSlot(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := moveToSlot(tt.order, tt.hidden, tt.dragKey, tt.slot)
+			result := moveToSlot(tt.order, tt.dragKey, tt.slot)
 			if tt.wantNil {
 				if result != nil {
 					t.Errorf("expected nil, got %v", result)
@@ -997,5 +978,192 @@ func TestLiveReorderPanel(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Gesture tests - end-to-end drag sequences through real handlers
+// ═══════════════════════════════════════════════════════════════════════════
+
+// simulateDrag replays a full mouse drag sequence through the real handlers:
+// mousedown -> mousemove past threshold -> mousemove to target -> mouseup.
+func simulateDrag(m Model, startX, startY, endX, endY int) Model {
+	m, _ = m.handleMouseDown(tea.MouseClickMsg(tea.Mouse{
+		X: startX, Y: startY, Button: tea.MouseLeft,
+	}))
+	// Move past threshold
+	m, _ = m.handleMouseMove(tea.MouseMotionMsg(tea.Mouse{
+		X: startX + dragThreshold + 1, Y: startY,
+	}))
+	// Move to target
+	m, _ = m.handleMouseMove(tea.MouseMotionMsg(tea.Mouse{
+		X: endX, Y: endY,
+	}))
+	// Release
+	m, _ = m.handleMouseUp(tea.MouseReleaseMsg(tea.Mouse{
+		X: endX, Y: endY,
+	}))
+	return m
+}
+
+func TestGesture_BarReorder(t *testing.T) {
+	m := testModel()
+	// Drag five_hour (Y=5) down past seven_day midpoint (Y=8)
+	m = simulateDrag(m, 40, 5, 40, 8)
+
+	// Order should flip
+	got := m.layoutState.catOrder["claude"]
+	want := []string{"seven_day", "five_hour"}
+	if !slicesEqual(got, want) {
+		t.Errorf("catOrder = %v, want %v", got, want)
+	}
+	// Should have exactly 1 reorderBarCmd
+	if len(m.cmdHistory) != 1 {
+		t.Fatalf("cmdHistory length = %d, want 1", len(m.cmdHistory))
+	}
+	if _, ok := m.cmdHistory[0].(reorderBarCmd); !ok {
+		t.Errorf("cmd type = %T, want reorderBarCmd", m.cmdHistory[0])
+	}
+	// Undo restores original order
+	m.undoCmd()
+	got = m.layoutState.catOrder["claude"]
+	want = []string{"five_hour", "seven_day"}
+	if !slicesEqual(got, want) {
+		t.Errorf("after undo: catOrder = %v, want %v", got, want)
+	}
+}
+
+func TestGesture_PanelSwap(t *testing.T) {
+	m := testModel()
+	// Drag claude panel (Y=3, in panel header area) below codex midpoint (Y=18)
+	m = simulateDrag(m, 40, 3, 40, 18)
+
+	got := m.layoutState.panelOrder
+	want := []string{"codex", "claude"}
+	if !slicesEqual(got, want) {
+		t.Errorf("panelOrder = %v, want %v", got, want)
+	}
+	if len(m.cmdHistory) != 1 {
+		t.Fatalf("cmdHistory length = %d, want 1", len(m.cmdHistory))
+	}
+	if _, ok := m.cmdHistory[0].(reorderPanelsCmd); !ok {
+		t.Errorf("cmd type = %T, want reorderPanelsCmd", m.cmdHistory[0])
+	}
+	// Undo restores
+	m.undoCmd()
+	got = m.layoutState.panelOrder
+	want = []string{"claude", "codex"}
+	if !slicesEqual(got, want) {
+		t.Errorf("after undo: panelOrder = %v, want %v", got, want)
+	}
+}
+
+func TestGesture_BarToTrash(t *testing.T) {
+	m := testModel()
+	tz := m.layout.trashZone
+	// Drag five_hour to trash zone center
+	tzX := (tz.Min.X + tz.Max.X) / 2
+	tzY := (tz.Min.Y + tz.Max.Y) / 2
+	m = simulateDrag(m, 40, 5, tzX, tzY)
+
+	if !m.layoutState.hidden["five_hour"] {
+		t.Error("five_hour should be hidden")
+	}
+	if len(m.cmdHistory) != 1 {
+		t.Fatalf("cmdHistory length = %d, want 1", len(m.cmdHistory))
+	}
+	if _, ok := m.cmdHistory[0].(hideBarCmd); !ok {
+		t.Errorf("cmd type = %T, want hideBarCmd", m.cmdHistory[0])
+	}
+	// Undo unhides
+	m.undoCmd()
+	if m.layoutState.hidden["five_hour"] {
+		t.Error("after undo: five_hour should not be hidden")
+	}
+}
+
+func TestGesture_PanelToTrash(t *testing.T) {
+	m := testModel()
+	tz := m.layout.trashZone
+	tzX := (tz.Min.X + tz.Max.X) / 2
+	tzY := (tz.Min.Y + tz.Max.Y) / 2
+	// Drag claude panel header to trash
+	m = simulateDrag(m, 40, 3, tzX, tzY)
+
+	if !m.layoutState.hidden["five_hour"] || !m.layoutState.hidden["seven_day"] {
+		t.Error("all claude bars should be hidden")
+	}
+	if len(m.cmdHistory) != 1 {
+		t.Fatalf("cmdHistory length = %d, want 1", len(m.cmdHistory))
+	}
+	if _, ok := m.cmdHistory[0].(hidePanelCmd); !ok {
+		t.Errorf("cmd type = %T, want hidePanelCmd", m.cmdHistory[0])
+	}
+	// Undo unhides all
+	m.undoCmd()
+	if m.layoutState.hidden["five_hour"] || m.layoutState.hidden["seven_day"] {
+		t.Error("after undo: claude bars should not be hidden")
+	}
+}
+
+func TestGesture_BelowThreshold(t *testing.T) {
+	m := testModel()
+	origOrder := copyStrings(m.layoutState.catOrder["claude"])
+	origPanels := copyStrings(m.layoutState.panelOrder)
+
+	// Click and release without exceeding threshold
+	m, _ = m.handleMouseDown(tea.MouseClickMsg(tea.Mouse{
+		X: 40, Y: 5, Button: tea.MouseLeft,
+	}))
+	m, _ = m.handleMouseUp(tea.MouseReleaseMsg(tea.Mouse{
+		X: 40, Y: 5,
+	}))
+
+	if !slicesEqual(m.layoutState.catOrder["claude"], origOrder) {
+		t.Error("catOrder should not change")
+	}
+	if !slicesEqual(m.layoutState.panelOrder, origPanels) {
+		t.Error("panelOrder should not change")
+	}
+	if len(m.cmdHistory) != 0 {
+		t.Errorf("cmdHistory should be empty, got %d", len(m.cmdHistory))
+	}
+}
+
+func TestGesture_MultiUndo(t *testing.T) {
+	m := testModel()
+
+	// Gesture 1: reorder bars (drag five_hour past seven_day)
+	m = simulateDrag(m, 40, 5, 40, 8)
+	if !slicesEqual(m.layoutState.catOrder["claude"], []string{"seven_day", "five_hour"}) {
+		t.Fatalf("after reorder: catOrder = %v", m.layoutState.catOrder["claude"])
+	}
+
+	// Gesture 2: hide seven_day (now first) to trash
+	tz := m.layout.trashZone
+	tzX := (tz.Min.X + tz.Max.X) / 2
+	tzY := (tz.Min.Y + tz.Max.Y) / 2
+	m = simulateDrag(m, 40, 5, tzX, tzY)
+	// seven_day is first in the reordered list, so dragging from Y=5 (first bar position) grabs it
+	// But we need to check what actually got grabbed - it depends on the bar geometry
+	// The layout.bars still has the original geometry, so Y=5 hits five_hour
+	if !m.layoutState.hidden["five_hour"] {
+		t.Fatalf("five_hour should be hidden after trash gesture")
+	}
+
+	if len(m.cmdHistory) != 2 {
+		t.Fatalf("cmdHistory length = %d, want 2", len(m.cmdHistory))
+	}
+
+	// Undo hide
+	m.undoCmd()
+	if m.layoutState.hidden["five_hour"] {
+		t.Error("after first undo: five_hour should not be hidden")
+	}
+
+	// Undo reorder
+	m.undoCmd()
+	if !slicesEqual(m.layoutState.catOrder["claude"], []string{"five_hour", "seven_day"}) {
+		t.Errorf("after second undo: catOrder = %v, want [five_hour seven_day]", m.layoutState.catOrder["claude"])
 	}
 }

@@ -27,22 +27,19 @@ const (
 // demoTickMsg drives the demo state machine forward.
 type demoTickMsg time.Time
 
-// demoFrameMs is the demo playback tick period in milliseconds.
-const demoFrameMs = 50
-
-// demoTickCmd returns a tea.Cmd that fires a demoTickMsg after one frame.
+// demoTickCmd returns a tea.Cmd that fires a demoTickMsg after 50ms.
 func demoTickCmd() tea.Cmd {
-	return tea.Tick(demoFrameMs*time.Millisecond, func(t time.Time) tea.Msg {
+	return tea.Tick(50*time.Millisecond, func(t time.Time) tea.Msg {
 		return demoTickMsg(t)
 	})
 }
 
-// demoAnimDuration is the number of frames for a drag animation.
-const demoAnimDuration = 1000 / demoFrameMs
+// demoAnimDuration is the number of frames for a drag animation (50ms per frame).
+const demoAnimDuration = 20 // 20 frames = 1000ms
 
 // demoWaitFrames converts a duration in milliseconds to frame count.
 func demoWaitFrames(ms int) int {
-	return ms / demoFrameMs
+	return ms / 50
 }
 
 // updateDemo dispatches to the current demo step handler.

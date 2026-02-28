@@ -5,18 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"time"
 )
 
 // Gemini CLI's public OAuth client credentials (embedded in the CLI source).
-// These are "installed application" credentials - safe to include per
-// https://developers.google.com/identity/protocols/oauth2/native-app
 const (
-	geminiClientID     = "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com"
-	geminiClientSecret = "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"
+	geminiClientID     = "77185425430.apps.googleusercontent.com"
+	geminiClientSecret = "OTJgUOQcT7lO7GsGZq2G4IlT"
 	geminiTokenURL     = "https://oauth2.googleapis.com/token"
 )
 
@@ -57,15 +54,15 @@ func refreshGeminiToken(creds *geminiCreds) error {
 		return nil // token still valid
 	}
 
-	form := url.Values{
-		"client_id":     {geminiClientID},
-		"client_secret": {geminiClientSecret},
-		"refresh_token": {creds.RefreshToken},
-		"grant_type":    {"refresh_token"},
-	}
+	body, _ := json.Marshal(map[string]string{
+		"client_id":     geminiClientID,
+		"client_secret": geminiClientSecret,
+		"refresh_token": creds.RefreshToken,
+		"grant_type":    "refresh_token",
+	})
 
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.PostForm(geminiTokenURL, form)
+	resp, err := client.Post(geminiTokenURL, "application/json", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("Gemini token refresh failed: %w", err)
 	}
