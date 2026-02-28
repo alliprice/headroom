@@ -39,18 +39,18 @@ func ParseGemini(data map[string]any) []Category {
 			continue
 		}
 
+		// Skip untouched models - Gemini returns buckets for every available
+		// model, but only the ones you've used matter.
+		if remaining >= 1 {
+			continue
+		}
+
 		utilization := (1 - remaining) * 100
 		if utilization < 0 {
 			utilization = 0
 		}
 		if utilization > 100 {
 			utilization = 100
-		}
-
-		// Skip models with no usage - Gemini returns buckets for every
-		// available model, but only the ones you've touched matter.
-		if utilization == 0 {
-			continue
 		}
 
 		key := "gemini_" + modelID
