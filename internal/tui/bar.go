@@ -66,10 +66,8 @@ func RenderBar(width int, usagePct, glidePct, glideOpacity float64) string {
 		switch {
 		case i == glidePos && glideOpacity > 0:
 			flushEmpty(i)
-			// Interpolate glide foreground: barEmpty (#1E1028, 30,16,40) → glide (#F5F3FF, 245,243,255)
-			gr := uint8(30 + glideOpacity*(245-30))
-			gg := uint8(16 + glideOpacity*(243-16))
-			gb := uint8(40 + glideOpacity*(255-40))
+			// Interpolate glide foreground: barEmpty → glide at current opacity.
+			gr, gg, gb := lerpRGB(rgbBarEmpty, rgbGlide, glideOpacity)
 			fgHex := fmt.Sprintf("#%02x%02x%02x", gr, gg, gb)
 			buf.WriteString(
 				lipgloss.NewStyle().

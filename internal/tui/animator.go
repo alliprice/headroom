@@ -36,7 +36,7 @@ func (a *animState) allBarsFinished(sleepFrame int) bool {
 	if len(a.barTargets) == 0 {
 		return true
 	}
-	elapsedMs := (sleepFrame - a.barStartFrame) * 100 // 100ms per frame
+	elapsedMs := (sleepFrame - a.barStartFrame) * plasmaFrameMs // 100ms per frame
 	last := a.barTargets[len(a.barTargets)-1]
 	return elapsedMs >= last.startMs+1000
 }
@@ -72,7 +72,7 @@ func (a *animState) buildAnimFunc(sleepFrame int) barAnimFunc {
 	if !a.barAnimating {
 		return nil
 	}
-	elapsedMs := (sleepFrame - a.barStartFrame) * 100
+	elapsedMs := (sleepFrame - a.barStartFrame) * plasmaFrameMs
 	targetMap := make(map[string]barAnimTarget, len(a.barTargets))
 	for _, bt := range a.barTargets {
 		targetMap[bt.key] = bt

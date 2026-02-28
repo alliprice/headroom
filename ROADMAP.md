@@ -63,7 +63,7 @@ five independent refactors. each replaces something hand-rolled with something t
 - ~~**LayoutStrategy**~~ — done. `computeCompaction` pure function extracted from `renderPanelWithGeom`. progressive compaction decisions (titles, spacing, extra bar) separated from rendering.
 - ~~**OutputFormatter**~~ — done. `fetchHeadroom()` shared pipeline extracted from `RunJSON()` and `RunStatus()`. probe-fetch-compute logic lives once; formatters are thin wrappers. `categoryStatus()`/`extraStatus()` with 5 unit tests.
 - ~~**Animator**~~ — done. `animState` consolidated into `animator.go` with `buildTargets()`, `buildAnimFunc()`, `allBarsFinished()` methods. `easeOutCubic` moved from bar.go. 10 unit tests. model.go and view.go simplified by ~90 lines.
-- ~~**Drag Commands**~~ — done. `layoutCmd` interface with `hideBarCmd`, `hidePanelCmd`, `swapPanelsCmd`, `reorderBarCmd`, `restoreAllCmd`. pre-drag layout snapshot enables net-change tracking. ctrl+z undo via 50-entry command history stack. 8 unit tests.
+- ~~**Drag Commands**~~ — done. `layoutCmd` interface with `hideBarCmd`, `hidePanelCmd`, `reorderPanelsCmd`, `reorderBarCmd`, `restoreAllCmd`. pre-drag layout snapshot enables net-change tracking. ctrl+z undo via 50-entry command history stack. 8 unit tests.
 
 ### phase 4 — maximum hubris
 
