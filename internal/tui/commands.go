@@ -112,6 +112,13 @@ func mockFetch() tea.Cmd {
 				ResetsAt:      now.Add(time.Duration(24+rand.Intn(120)) * time.Hour).Format(time.RFC3339),
 				WindowSeconds: parse.WindowSevenDay,
 			},
+			{
+				Key:           "gemini_gemini-2.0-flash",
+				Name:          "2.0 Flash",
+				Utilization:   30 + rand.Float64()*40,
+				ResetsAt:      now.Add(time.Duration(12+rand.Intn(12)) * time.Hour).Format(time.RFC3339),
+				WindowSeconds: 86400,
+			},
 		}
 		extra := &parse.ExtraUsage{
 			MonthlyLimit: 10000,
