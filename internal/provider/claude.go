@@ -35,8 +35,8 @@ var claudeWindowDurations = map[string]int{
 var claudeDisplayNames = map[string]string{
 	"five_hour":        "Session",
 	"seven_day":        "Weekly",
-	"seven_day_opus":   "Opus (weekly)",
-	"seven_day_sonnet": "Sonnet (weekly)",
+	"seven_day_opus":   "Opus",
+	"seven_day_sonnet": "Sonnet",
 }
 
 var claudeCategoryOrder = []string{"five_hour", "seven_day", "seven_day_opus"}
@@ -215,7 +215,7 @@ func parseClaude(data map[string]any) ([]parse.Category, *parse.ExtraUsage) {
 func demoClaude() *FetchResult {
 	now := time.Now().UTC()
 	weekly := 40 + rand.Float64()*40
-	sonnet := weekly * (0.2 + rand.Float64()*0.1)
+	sonnet := weekly * (0.1 + rand.Float64()*0.15)
 	weeklyReset := now.Add(time.Duration(24+rand.Intn(120)) * time.Hour).Format(time.RFC3339)
 
 	cats := []parse.Category{
@@ -235,7 +235,7 @@ func demoClaude() *FetchResult {
 		},
 		{
 			Key:           "seven_day_sonnet",
-			Name:          "Sonnet (weekly)",
+			Name:          "Sonnet",
 			Utilization:   sonnet,
 			ResetsAt:      weeklyReset,
 			WindowSeconds: 7 * 24 * 3600,
