@@ -37,7 +37,7 @@ func defaultLayoutState(catsByProvider map[string][]string) layoutState {
 
 // providerOrder returns provider IDs in their canonical display order.
 func providerOrder() []string {
-	return []string{"claude", "codex"}
+	return []string{"claude", "codex", "gemini"}
 }
 
 // orderedCats returns the category keys for a panel in custom order,
