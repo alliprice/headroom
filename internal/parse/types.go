@@ -1,31 +1,5 @@
 package parse
 
-// Window durations in seconds
-const (
-	WindowFiveHour     = 5 * 3600
-	WindowSevenDay     = 7 * 24 * 3600
-	WindowSevenDayOpus = 7 * 24 * 3600
-)
-
-// WindowDurations maps API keys to window durations in seconds.
-var WindowDurations = map[string]int{
-	"five_hour":        WindowFiveHour,
-	"seven_day":        WindowSevenDay,
-	"seven_day_opus":   WindowSevenDayOpus,
-	"seven_day_sonnet": WindowSevenDay,
-}
-
-// DisplayNames maps API keys to human-readable names.
-var DisplayNames = map[string]string{
-	"five_hour":        "Session",
-	"seven_day":        "Weekly",
-	"seven_day_opus":   "Opus (weekly)",
-	"seven_day_sonnet": "Sonnet (weekly)",
-}
-
-// CategoryOrder is the preferred display order for categories.
-var CategoryOrder = []string{"five_hour", "seven_day", "seven_day_opus"}
-
 // Category represents a single usage category (Claude or Codex).
 type Category struct {
 	Key           string
@@ -53,3 +27,23 @@ const (
 const (
 	SleepAfterUnfocusedSeconds = 2 * 60 * 60
 )
+
+// AsFloat64 extracts a float64 from any, returning (0, false) when absent or
+// not a number.
+func AsFloat64(v any) (float64, bool) {
+	if v == nil {
+		return 0, false
+	}
+	f, ok := v.(float64)
+	return f, ok
+}
+
+// AsString extracts a string from any, returning ("", false) when absent or
+// not a string.
+func AsString(v any) (string, bool) {
+	if v == nil {
+		return "", false
+	}
+	s, ok := v.(string)
+	return s, ok
+}
