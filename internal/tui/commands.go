@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"math/rand"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -72,57 +71,34 @@ func tickCmd() tea.Cmd {
 }
 
 // mockFetch returns a tea.Cmd that produces a fetchResultMsg with randomized
-// mock data. Used in demo mode to avoid hitting real APIs.
+// mock data. Each provider supplies its own plausible demo data.
 func mockFetch() tea.Cmd {
 	return func() tea.Msg {
-		now := time.Now().UTC()
-		cats := []parse.Category{
-			{
-				Key:           "five_hour",
-				Name:          "Session",
-				Utilization:   35 + rand.Float64()*30,
-				ResetsAt:      now.Add(time.Duration(1+rand.Intn(4)) * time.Hour).Format(time.RFC3339),
-				WindowSeconds: 18000,
-			},
-			{
-				Key:           "seven_day",
-				Name:          "Weekly",
-				Utilization:   55 + rand.Float64()*25,
-				ResetsAt:      now.Add(time.Duration(24+rand.Intn(120)) * time.Hour).Format(time.RFC3339),
-				WindowSeconds: 604800,
-			},
-			{
-				Key:           "codex_primary",
-				Name:          "Session",
-				Utilization:   20 + rand.Float64()*40,
-				ResetsAt:      now.Add(time.Duration(1+rand.Intn(4)) * time.Hour).Format(time.RFC3339),
-				WindowSeconds: 18000,
-			},
-			{
-				Key:           "codex_secondary",
-				Name:          "Weekly",
-				Utilization:   40 + rand.Float64()*35,
-				ResetsAt:      now.Add(time.Duration(24+rand.Intn(120)) * time.Hour).Format(time.RFC3339),
-				WindowSeconds: 604800,
-			},
-			{
-				Key:           "gemini_flash",
-				Name:          "Flash",
-				Utilization:   30 + rand.Float64()*40,
-				ResetsAt:      now.Add(time.Duration(12+rand.Intn(12)) * time.Hour).Format(time.RFC3339),
-				WindowSeconds: 86400,
-			},
+		var (
+			allCats       []parse.Category
+			providerExtra = make(map[string]*parse.ExtraUsage)
+			extra         *parse.ExtraUsage
+		)
+
+		for _, p := range provider.All {
+			if p.Demo == nil {
+				continue
+			}
+			res := p.Demo()
+			if res == nil {
+				continue
+			}
+			allCats = append(allCats, res.Categories...)
+			if res.Extra != nil {
+				providerExtra[p.ID] = res.Extra
+				extra = res.Extra
+			}
 		}
-		extra := &parse.ExtraUsage{
-			MonthlyLimit: 10000,
-			UsedCredits:  3500 + rand.Float64()*3000,
-		}
-		extra.Utilization = extra.UsedCredits / extra.MonthlyLimit * 100
 
 		return fetchResultMsg{
-			categories:    cats,
+			categories:    allCats,
 			extra:         extra,
-			providerExtra: map[string]*parse.ExtraUsage{"claude": extra},
+			providerExtra: providerExtra,
 			fetchTime:     time.Now(),
 		}
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"os/exec"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ var Codex = Provider{
 	CategoryIDs: []string{"codex_primary", "codex_secondary"},
 	Probe:       probeCodex,
 	Fetch:       fetchCodex,
+	Demo:        demoCodex,
 }
 
 func probeCodex() bool {
@@ -189,4 +191,26 @@ func parseCodex(data map[string]any) []parse.Category {
 	}
 
 	return categories
+}
+
+func demoCodex() *FetchResult {
+	now := time.Now().UTC()
+	return &FetchResult{
+		Categories: []parse.Category{
+			{
+				Key:           "codex_primary",
+				Name:          "Session",
+				Utilization:   20 + rand.Float64()*40,
+				ResetsAt:      now.Add(time.Duration(1+rand.Intn(4)) * time.Hour).Format(time.RFC3339),
+				WindowSeconds: 300 * 60,
+			},
+			{
+				Key:           "codex_secondary",
+				Name:          "Weekly",
+				Utilization:   40 + rand.Float64()*35,
+				ResetsAt:      now.Add(time.Duration(24+rand.Intn(120)) * time.Hour).Format(time.RFC3339),
+				WindowSeconds: 10080 * 60,
+			},
+		},
+	}
 }

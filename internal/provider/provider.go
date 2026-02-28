@@ -20,4 +20,7 @@ type Provider struct {
 
 	// Fetch retrieves and parses usage data in one step.
 	Fetch func() (result *FetchResult, isAuthErr bool, err error)
+
+	// Demo returns plausible fake data for demo mode. nil = no demo data.
+	Demo func() *FetchResult
 }

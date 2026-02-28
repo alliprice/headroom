@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -21,6 +22,7 @@ var Gemini = Provider{
 	CategoryIDs: nil, // dynamic - discovered at fetch time
 	Probe:       probeGemini,
 	Fetch:       fetchGemini,
+	Demo:        demoGemini,
 }
 
 // Gemini CLI's public OAuth client credentials (embedded in the CLI source).
@@ -310,4 +312,19 @@ func parseGemini(data map[string]any) []parse.Category {
 	}
 
 	return categories
+}
+
+func demoGemini() *FetchResult {
+	now := time.Now().UTC()
+	return &FetchResult{
+		Categories: []parse.Category{
+			{
+				Key:           "gemini_flash",
+				Name:          "Flash",
+				Utilization:   30 + rand.Float64()*40,
+				ResetsAt:      now.Add(time.Duration(12+rand.Intn(12)) * time.Hour).Format(time.RFC3339),
+				WindowSeconds: 86400,
+			},
+		},
+	}
 }

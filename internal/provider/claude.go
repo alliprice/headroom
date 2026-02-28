@@ -3,6 +3,7 @@ package provider
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ var Claude = Provider{
 	CategoryIDs: []string{"five_hour", "seven_day", "seven_day_opus"},
 	Probe:       nil, // always attempted
 	Fetch:       fetchClaude,
+	Demo:        demoClaude,
 }
 
 // claude-specific constants
@@ -208,4 +210,30 @@ func parseClaude(data map[string]any) ([]parse.Category, *parse.ExtraUsage) {
 	}
 
 	return categories, extra
+}
+
+func demoClaude() *FetchResult {
+	now := time.Now().UTC()
+	cats := []parse.Category{
+		{
+			Key:           "five_hour",
+			Name:          "Session",
+			Utilization:   35 + rand.Float64()*30,
+			ResetsAt:      now.Add(time.Duration(1+rand.Intn(4)) * time.Hour).Format(time.RFC3339),
+			WindowSeconds: 5 * 3600,
+		},
+		{
+			Key:           "seven_day",
+			Name:          "Weekly",
+			Utilization:   55 + rand.Float64()*25,
+			ResetsAt:      now.Add(time.Duration(24+rand.Intn(120)) * time.Hour).Format(time.RFC3339),
+			WindowSeconds: 7 * 24 * 3600,
+		},
+	}
+	extra := &parse.ExtraUsage{
+		MonthlyLimit: 10000,
+		UsedCredits:  3500 + rand.Float64()*3000,
+	}
+	extra.Utilization = extra.UsedCredits / extra.MonthlyLimit * 100
+	return &FetchResult{Categories: cats, Extra: extra}
 }
