@@ -214,19 +214,30 @@ func parseClaude(data map[string]any) ([]parse.Category, *parse.ExtraUsage) {
 
 func demoClaude() *FetchResult {
 	now := time.Now().UTC()
+	weekly := 40 + rand.Float64()*40
+	sonnet := weekly * (0.2 + rand.Float64()*0.1)
+	weeklyReset := now.Add(time.Duration(24+rand.Intn(120)) * time.Hour).Format(time.RFC3339)
+
 	cats := []parse.Category{
 		{
 			Key:           "five_hour",
 			Name:          "Session",
-			Utilization:   35 + rand.Float64()*30,
+			Utilization:   20 + rand.Float64()*60,
 			ResetsAt:      now.Add(time.Duration(1+rand.Intn(4)) * time.Hour).Format(time.RFC3339),
 			WindowSeconds: 5 * 3600,
 		},
 		{
 			Key:           "seven_day",
 			Name:          "Weekly",
-			Utilization:   55 + rand.Float64()*25,
-			ResetsAt:      now.Add(time.Duration(24+rand.Intn(120)) * time.Hour).Format(time.RFC3339),
+			Utilization:   weekly,
+			ResetsAt:      weeklyReset,
+			WindowSeconds: 7 * 24 * 3600,
+		},
+		{
+			Key:           "seven_day_sonnet",
+			Name:          "Sonnet (weekly)",
+			Utilization:   sonnet,
+			ResetsAt:      weeklyReset,
 			WindowSeconds: 7 * 24 * 3600,
 		},
 	}
