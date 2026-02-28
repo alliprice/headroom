@@ -74,9 +74,13 @@ func init() {
 	}
 }
 
-// plasmaTickCmd returns a tea.Cmd that fires a sleepTickMsg after 100ms.
+// plasmaFrameMs is the plasma/sleep animation tick period in milliseconds.
+// The animator uses this to convert frame counts to elapsed time.
+const plasmaFrameMs = 100
+
+// plasmaTickCmd returns a tea.Cmd that fires a sleepTickMsg after one frame.
 func plasmaTickCmd() tea.Cmd {
-	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
+	return tea.Tick(plasmaFrameMs*time.Millisecond, func(t time.Time) tea.Msg {
 		return sleepTickMsg(t)
 	})
 }

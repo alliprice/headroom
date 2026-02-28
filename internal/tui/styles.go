@@ -15,6 +15,13 @@ var (
 	colorBrand    = lipgloss.Color("#7C3AED") // Violet - brand accent
 )
 
+// RGB triples for gradient interpolation. These must match their lipgloss
+// counterparts above - when the theme system arrives, both flow from one source.
+var (
+	rgbBarEmpty = [3]uint8{0x1E, 0x10, 0x28} // matches colorBarEmpty
+	rgbGlide    = [3]uint8{0xF5, 0xF3, 0xFF} // matches colorGlide
+)
+
 var (
 	// Bar styles (used by bar.go)
 	barEmptyStyle = lipgloss.NewStyle().Foreground(colorBarEmpty).Background(colorBarEmpty)

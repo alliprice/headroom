@@ -271,7 +271,10 @@ func (m Model) handleMouseUp(msg tea.MouseReleaseMsg) (Model, tea.Cmd) {
 				}
 			case dragTargetPanel:
 				if !slicesEqual(m.drag.preLayout.panelOrder, m.layoutState.panelOrder) {
-					m.pushCmd(swapPanelsCmd{})
+					m.pushCmd(reorderPanelsCmd{
+						oldOrder: copyStrings(m.drag.preLayout.panelOrder),
+						newOrder: copyStrings(m.layoutState.panelOrder),
+					})
 				}
 			}
 		}

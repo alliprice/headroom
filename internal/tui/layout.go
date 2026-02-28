@@ -1,6 +1,10 @@
 package tui
 
-import "image"
+import (
+	"image"
+
+	"github.com/alliprice/headroom/internal/provider"
+)
 
 // layoutState holds user-customizable layout: panel order, category order
 // within panels, and hidden categories. Persists across data refreshes.
@@ -35,9 +39,14 @@ func defaultLayoutState(catsByProvider map[string][]string) layoutState {
 	}
 }
 
-// providerOrder returns provider IDs in their canonical display order.
+// providerOrder returns provider IDs in their canonical display order,
+// derived from the provider registry.
 func providerOrder() []string {
-	return []string{"claude", "codex", "gemini"}
+	order := make([]string, len(provider.All))
+	for i, p := range provider.All {
+		order[i] = p.ID
+	}
+	return order
 }
 
 // orderedCats returns the category keys for a panel in custom order,
