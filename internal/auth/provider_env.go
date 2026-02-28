@@ -7,8 +7,6 @@ import (
 
 type envProvider struct{}
 
-func (envProvider) name() string { return "env" }
-
 func (envProvider) getToken() (string, error) {
 	token := os.Getenv("CLAUDE_CODE_OAUTH_TOKEN")
 	if token == "" {

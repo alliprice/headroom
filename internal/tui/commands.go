@@ -71,13 +71,6 @@ func tickCmd() tea.Cmd {
 	})
 }
 
-// sleepTickCmd returns a tea.Cmd that sends a sleepTickMsg after 500ms.
-func sleepTickCmd() tea.Cmd {
-	return tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
-		return sleepTickMsg(t)
-	})
-}
-
 // mockFetch returns a tea.Cmd that produces a fetchResultMsg with randomized
 // mock data. Used in demo mode to avoid hitting real APIs.
 func mockFetch() tea.Cmd {

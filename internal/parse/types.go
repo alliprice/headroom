@@ -53,11 +53,3 @@ const (
 const (
 	SleepAfterUnfocusedSeconds = 2 * 60 * 60
 )
-
-// CoreKeys are the primary category keys used for compaction logic.
-var CoreKeys = map[string]bool{
-	"five_hour":       true,
-	"seven_day":       true,
-	"codex_primary":   true,
-	"codex_secondary": true,
-}

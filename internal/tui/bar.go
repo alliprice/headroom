@@ -66,10 +66,8 @@ func RenderBar(width int, usagePct, glidePct, glideOpacity float64) string {
 		switch {
 		case i == glidePos && glideOpacity > 0:
 			flushEmpty(i)
-			// Interpolate glide foreground: barEmpty (#1E1028, 30,16,40) → glide (#F5F3FF, 245,243,255)
-			gr := uint8(30 + glideOpacity*(245-30))
-			gg := uint8(16 + glideOpacity*(243-16))
-			gb := uint8(40 + glideOpacity*(255-40))
+			// Interpolate glide foreground: barEmpty → glide at current opacity.
+			gr, gg, gb := lerpRGB(rgbBarEmpty, rgbGlide, glideOpacity)
 			fgHex := fmt.Sprintf("#%02x%02x%02x", gr, gg, gb)
 			buf.WriteString(
 				lipgloss.NewStyle().
@@ -81,7 +79,7 @@ func RenderBar(width int, usagePct, glidePct, glideOpacity float64) string {
 
 		case i < fullCells:
 			flushEmpty(i)
-			r, g, b := barGradientColor(i, glidePos, fullCells, width)
+			r, g, b := barGradientColor(i, glidePos, fullCells)
 			hexColor := fmt.Sprintf("#%02x%02x%02x", r, g, b)
 			buf.WriteString(
 				lipgloss.NewStyle().
@@ -92,7 +90,7 @@ func RenderBar(width int, usagePct, glidePct, glideOpacity float64) string {
 
 		case i == fullCells && partialEighths > 0:
 			flushEmpty(i)
-			r, g, b := barGradientColor(i, glidePos, fullCells, width)
+			r, g, b := barGradientColor(i, glidePos, fullCells)
 			hexColor := fmt.Sprintf("#%02x%02x%02x", r, g, b)
 			buf.WriteString(
 				lipgloss.NewStyle().
@@ -116,7 +114,7 @@ func RenderBar(width int, usagePct, glidePct, glideOpacity float64) string {
 
 // barGradientColor returns the RGB color for a filled cell at position i.
 // Before the glide marker: purple→pink. After: yellow→orange.
-func barGradientColor(i, glidePos, fillEnd, width int) (uint8, uint8, uint8) {
+func barGradientColor(i, glidePos, fillEnd int) (uint8, uint8, uint8) {
 	if i < glidePos {
 		// Under pace gradient: purple → pink
 		t := 0.0

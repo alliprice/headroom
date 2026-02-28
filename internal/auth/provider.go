@@ -7,7 +7,6 @@ import (
 
 // credentialProvider retrieves an OAuth access token from a single source.
 type credentialProvider interface {
-	name() string
 	getToken() (string, error)
 }
 

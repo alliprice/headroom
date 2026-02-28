@@ -9,8 +9,6 @@ import (
 
 type fileProvider struct{}
 
-func (fileProvider) name() string { return "file" }
-
 func (fileProvider) getToken() (string, error) {
 	path := filepath.Join(claudeConfigDir(), ".credentials.json")
 	data, err := os.ReadFile(path)

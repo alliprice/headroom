@@ -40,9 +40,3 @@ func newKeyMap() keyMap {
 func (k keyMap) ShortHelp() []key.Binding {
 	return []key.Binding{k.Quit, k.Refresh, k.Interval, k.Reset, k.Undo}
 }
-
-func (k keyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{
-		{k.Quit, k.Refresh, k.Interval, k.Reset, k.Undo},
-	}
-}

@@ -92,14 +92,6 @@ func mergeOrder(existing, incoming []string) []string {
 	return existing
 }
 
-// hideAllBarsInPanel hides every bar that belongs to the given panel.
-func (ls *layoutState) hideAllBarsInPanel(panelID string) {
-	order := ls.catOrder[panelID]
-	for _, k := range order {
-		ls.hidden[k] = true
-	}
-}
-
 // clone returns a deep copy of the layout state.
 func (ls layoutState) clone() layoutState {
 	po := make([]string, len(ls.panelOrder))

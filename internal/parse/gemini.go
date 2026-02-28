@@ -1,9 +1,6 @@
 package parse
 
-import (
-	"strings"
-	"unicode"
-)
+import "strings"
 
 // geminiFamily extracts the model family from a Gemini model ID.
 // "gemini-2.0-flash" -> "flash", "gemini-2.5-flash-lite" -> "flash-lite",
@@ -122,25 +119,4 @@ func ParseGemini(data map[string]any) []Category {
 	}
 
 	return categories
-}
-
-// geminiDisplayName converts a Gemini model ID into a human-friendly name.
-// "gemini-2.0-flash" -> "2.0 Flash", "gemini-2.5-pro" -> "2.5 Pro"
-func geminiDisplayName(modelID string) string {
-	name := modelID
-	// Strip "gemini-" prefix if present.
-	if strings.HasPrefix(name, "gemini-") {
-		name = name[len("gemini-"):]
-	}
-	// Replace hyphens with spaces and title-case each word.
-	words := strings.Split(name, "-")
-	for i, w := range words {
-		if len(w) == 0 {
-			continue
-		}
-		runes := []rune(w)
-		runes[0] = unicode.ToUpper(runes[0])
-		words[i] = string(runes)
-	}
-	return strings.Join(words, " ")
 }

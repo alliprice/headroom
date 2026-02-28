@@ -12,8 +12,6 @@ import (
 
 type keychainProvider struct{}
 
-func (keychainProvider) name() string { return "keychain" }
-
 func (keychainProvider) getToken() (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
