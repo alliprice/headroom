@@ -90,8 +90,9 @@ func FormatResetTime(resetsAt string) string {
 		return fmt.Sprintf("Resets in %d hr", hrs)
 	}
 
-	// More than 24 hours away: show local day and time.
-	local := t.Local()
+	// More than 24 hours away: show day and time in UTC so output is
+	// deterministic across timezones (important for golden tests in CI).
+	local := t.UTC()
 	day := local.Format("Mon")
 	hour := local.Hour() % 12
 	if hour == 0 {
