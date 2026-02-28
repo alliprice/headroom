@@ -32,6 +32,13 @@ func ParseGemini(data map[string]any) []Category {
 			continue
 		}
 
+		modelID, _ := asString(bucket["modelId"])
+
+		// Skip _vertex routing variants - they mirror the base model quota.
+		if strings.HasSuffix(modelID, "_vertex") {
+			continue
+		}
+
 		utilization := (1 - remaining) * 100
 		if utilization < 0 {
 			utilization = 0
@@ -40,7 +47,6 @@ func ParseGemini(data map[string]any) []Category {
 			utilization = 100
 		}
 
-		modelID, _ := asString(bucket["modelId"])
 		key := "gemini_" + modelID
 
 		resetTime, _ := asString(bucket["resetTime"])

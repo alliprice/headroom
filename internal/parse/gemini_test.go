@@ -159,6 +159,52 @@ func TestParseGemini_MissingRemainingFraction(t *testing.T) {
 	}
 }
 
+func TestParseGemini_VertexVariantsFiltered(t *testing.T) {
+	NowFunc = func() time.Time {
+		return time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
+	}
+	t.Cleanup(func() { NowFunc = time.Now })
+
+	data := map[string]any{
+		"buckets": []any{
+			map[string]any{
+				"modelId":           "gemini-2.5-pro",
+				"remainingFraction": 0.5,
+				"resetTime":         "2025-06-16T12:00:00Z",
+				"tokenType":         "REQUESTS",
+			},
+			map[string]any{
+				"modelId":           "gemini-2.5-pro_vertex",
+				"remainingFraction": 0.5,
+				"resetTime":         "2025-06-16T12:00:00Z",
+				"tokenType":         "REQUESTS",
+			},
+			map[string]any{
+				"modelId":           "gemini-2.0-flash",
+				"remainingFraction": 0.8,
+				"resetTime":         "2025-06-16T12:00:00Z",
+				"tokenType":         "REQUESTS",
+			},
+			map[string]any{
+				"modelId":           "gemini-2.0-flash_vertex",
+				"remainingFraction": 0.8,
+				"resetTime":         "2025-06-16T12:00:00Z",
+				"tokenType":         "REQUESTS",
+			},
+		},
+	}
+	cats := ParseGemini(data)
+	if len(cats) != 2 {
+		t.Fatalf("expected 2 categories (vertex filtered), got %d", len(cats))
+	}
+	if cats[0].Key != "gemini_gemini-2.5-pro" {
+		t.Errorf("cats[0].Key = %q, want %q", cats[0].Key, "gemini_gemini-2.5-pro")
+	}
+	if cats[1].Key != "gemini_gemini-2.0-flash" {
+		t.Errorf("cats[1].Key = %q, want %q", cats[1].Key, "gemini_gemini-2.0-flash")
+	}
+}
+
 func TestGeminiDisplayName(t *testing.T) {
 	cases := []struct {
 		input string
@@ -166,6 +212,8 @@ func TestGeminiDisplayName(t *testing.T) {
 	}{
 		{"gemini-2.0-flash", "2.0 Flash"},
 		{"gemini-2.5-pro", "2.5 Pro"},
+		{"gemini-2.5-flash-lite", "2.5 Flash Lite"},
+		{"gemini-3-flash-preview", "3 Flash Preview"},
 		{"gemini-1.5-pro-latest", "1.5 Pro Latest"},
 		{"unknown-model", "Unknown Model"},
 		{"", ""},
