@@ -35,20 +35,23 @@ func TestHidePanelCmd_ExecuteUndo(t *testing.T) {
 	}
 }
 
-func TestSwapPanelsCmd_SelfInverse(t *testing.T) {
+func TestReorderPanelsCmd_ExecuteUndo(t *testing.T) {
 	ls := layoutState{
-		panelOrder: []string{"a", "b"},
+		panelOrder: []string{"a", "b", "c"},
 		catOrder:   map[string][]string{},
 		hidden:     map[string]bool{},
 	}
-	cmd := swapPanelsCmd{}
+	cmd := reorderPanelsCmd{
+		oldOrder: []string{"a", "b", "c"},
+		newOrder: []string{"c", "a", "b"},
+	}
 	cmd.Execute(&ls)
-	if ls.panelOrder[0] != "b" || ls.panelOrder[1] != "a" {
-		t.Errorf("Execute: got %v, want [b a]", ls.panelOrder)
+	if ls.panelOrder[0] != "c" || ls.panelOrder[1] != "a" || ls.panelOrder[2] != "b" {
+		t.Errorf("Execute: got %v, want [c a b]", ls.panelOrder)
 	}
 	cmd.Undo(&ls)
-	if ls.panelOrder[0] != "a" || ls.panelOrder[1] != "b" {
-		t.Errorf("Undo: got %v, want [a b]", ls.panelOrder)
+	if ls.panelOrder[0] != "a" || ls.panelOrder[1] != "b" || ls.panelOrder[2] != "c" {
+		t.Errorf("Undo: got %v, want [a b c]", ls.panelOrder)
 	}
 }
 
