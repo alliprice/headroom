@@ -1,15 +1,19 @@
 package provider
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 	"unicode"
 
-	"github.com/alliprice/headroom/internal/auth"
 	"github.com/alliprice/headroom/internal/parse"
 )
 
@@ -41,6 +45,137 @@ var claudeDisplayNames = map[string]string{
 
 var claudeCategoryOrder = []string{"five_hour", "seven_day", "seven_day_opus"}
 
+// --- credential chain ---
+
+// claudeCredentials is the JSON structure stored by Claude Code
+// in both macOS Keychain and ~/.claude/.credentials.json.
+type claudeCredentials struct {
+	ClaudeAiOauth struct {
+		AccessToken string `json:"accessToken"`
+	} `json:"claudeAiOauth"`
+}
+
+// claudeConfigDir returns the Claude Code config directory.
+// Respects CLAUDE_CONFIG_DIR, defaults to ~/.claude.
+func claudeConfigDir() string {
+	if d := os.Getenv("CLAUDE_CONFIG_DIR"); d != "" {
+		return d
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(".", ".claude")
+	}
+	return filepath.Join(home, ".claude")
+}
+
+// claudeCredentialProvider retrieves an OAuth access token from a single source.
+type claudeCredentialProvider interface {
+	getToken() (string, error)
+}
+
+var claudeCredentialChain = []claudeCredentialProvider{
+	claudeEnvProvider{},
+	claudeFileProvider{},
+	claudeKeychainProvider{},
+}
+
+func claudeGetAccessToken() (string, error) {
+	return claudeGetAccessTokenFromChain(claudeCredentialChain)
+}
+
+func claudeGetAccessTokenFromChain(chain []claudeCredentialProvider) (string, error) {
+	var lastErr error
+	for _, p := range chain {
+		token, err := p.getToken()
+		if err == nil {
+			return token, nil
+		}
+		lastErr = err
+	}
+	if lastErr != nil {
+		return "", fmt.Errorf("all credential providers failed (last: %w)", lastErr)
+	}
+	return "", fmt.Errorf("no credential providers configured")
+}
+
+// env provider - CLAUDE_CODE_OAUTH_TOKEN
+
+type claudeEnvProvider struct{}
+
+func (claudeEnvProvider) getToken() (string, error) {
+	token := os.Getenv("CLAUDE_CODE_OAUTH_TOKEN")
+	if token == "" {
+		return "", fmt.Errorf("CLAUDE_CODE_OAUTH_TOKEN not set")
+	}
+	return token, nil
+}
+
+// file provider - ~/.claude/.credentials.json
+
+type claudeFileProvider struct{}
+
+func (claudeFileProvider) getToken() (string, error) {
+	path := filepath.Join(claudeConfigDir(), ".credentials.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("credentials file: %w", err)
+	}
+
+	var creds claudeCredentials
+	if err := json.Unmarshal(data, &creds); err != nil {
+		return "", fmt.Errorf("credentials file: invalid JSON: %w", err)
+	}
+
+	token := creds.ClaudeAiOauth.AccessToken
+	if token == "" {
+		return "", fmt.Errorf("credentials file: no token found")
+	}
+	return token, nil
+}
+
+// keychain provider - macOS Keychain
+
+type claudeKeychainProvider struct{}
+
+func (claudeKeychainProvider) getToken() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "security", "find-generic-password", "-s", "Claude Code-credentials", "-w")
+	out, err := cmd.Output()
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("keychain access timed out")
+		}
+
+		var notFound *exec.Error
+		if errors.As(err, &notFound) && errors.Is(notFound.Err, exec.ErrNotFound) {
+			return "", fmt.Errorf("'security' command not found (macOS only)")
+		}
+
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return "", fmt.Errorf("keychain error - run 'claude' to re-authenticate")
+		}
+
+		return "", fmt.Errorf("keychain error: %w", err)
+	}
+
+	var creds claudeCredentials
+	if err := json.Unmarshal([]byte(strings.TrimSpace(string(out))), &creds); err != nil {
+		return "", fmt.Errorf("invalid credentials - run 'claude' to re-authenticate")
+	}
+
+	token := creds.ClaudeAiOauth.AccessToken
+	if token == "" {
+		return "", fmt.Errorf("no token found - run 'claude' to authenticate")
+	}
+
+	return token, nil
+}
+
+// --- fetch + parse ---
+
 // titleCase replaces underscores with spaces and title-cases each word.
 func titleCase(s string) string {
 	words := strings.Split(strings.ReplaceAll(s, "_", " "), " ")
@@ -56,7 +191,7 @@ func titleCase(s string) string {
 }
 
 func fetchClaude() (*FetchResult, bool, error) {
-	token, err := auth.GetAccessToken()
+	token, err := claudeGetAccessToken()
 	if err != nil {
 		return nil, true, err
 	}
@@ -211,6 +346,8 @@ func parseClaude(data map[string]any) ([]parse.Category, *parse.ExtraUsage) {
 
 	return categories, extra
 }
+
+// --- demo ---
 
 func demoClaude() *FetchResult {
 	now := time.Now().UTC()
