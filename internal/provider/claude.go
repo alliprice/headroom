@@ -193,13 +193,13 @@ func titleCase(s string) string {
 func fetchClaude() (*FetchResult, bool, error) {
 	token, err := claudeGetAccessToken()
 	if err != nil {
-		return nil, true, err
+		return nil, true, fmt.Errorf("%s", humanizeError("Claude", err))
 	}
 
 	data, err := fetchClaudeAPI(token)
 	if err != nil {
 		isAuth := strings.Contains(err.Error(), "expired") || strings.Contains(err.Error(), "authenticate")
-		return nil, isAuth, err
+		return nil, isAuth, fmt.Errorf("%s", humanizeError("Claude", err))
 	}
 
 	cats, extra := parseClaude(data)

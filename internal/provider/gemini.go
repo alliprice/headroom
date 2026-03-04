@@ -153,7 +153,7 @@ func fetchGemini() (*FetchResult, bool, error) {
 			strings.Contains(err.Error(), "authenticate") ||
 			strings.Contains(err.Error(), "401") ||
 			strings.Contains(err.Error(), "403")
-		return nil, isAuth, err
+		return nil, isAuth, fmt.Errorf("%s", humanizeError("Gemini", err))
 	}
 	cats := parseGemini(data)
 	return &FetchResult{Categories: cats}, false, nil

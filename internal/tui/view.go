@@ -80,7 +80,9 @@ func (m Model) View() tea.View {
 	// Error line (rendered above panels when present).
 	var errorLine string
 	if m.errorMsg != "" {
-		errorLine = errorStyle.Render(truncate(m.errorMsg, w-4))
+		marker := errorStyle.Render("\u00d7")
+		msg := dimStyle.Render(truncate(m.errorMsg, w-6))
+		errorLine = lipgloss.PlaceHorizontal(w, lipgloss.Center, marker+" "+msg)
 	}
 
 	// Empty state.
