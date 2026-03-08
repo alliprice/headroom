@@ -18,8 +18,8 @@ type ExtraUsage struct {
 
 // Refresh intervals in seconds
 const (
-	RefreshFocused     = 300
-	RefreshUnfocused   = 600
+	RefreshFocused     = 600
+	RefreshUnfocused   = 1200
 	RefreshOnAuthError = 30 * 60
 )
 
