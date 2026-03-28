@@ -16,9 +16,9 @@ func RunStatus() error {
 		case "conserve":
 			pace = fmt.Sprintf("%+.0f%% vs pace, conserve usage", cat.HeadroomPct)
 		case "plenty of room":
-			pace = fmt.Sprintf("%.0f%% under pace, plenty of room", cat.HeadroomPct)
+			pace = fmt.Sprintf("%.0f%% under pace, plenty of room", -cat.HeadroomPct)
 		default: // "slow down"
-			pace = fmt.Sprintf("%.0f%% over pace, slow down", -cat.HeadroomPct)
+			pace = fmt.Sprintf("%.0f%% over pace, slow down", cat.HeadroomPct)
 		}
 		fmt.Printf("%s: %.0f%% used | %s | %s\n", cat.Name, cat.UsagePct, pace, cat.Resets)
 	}

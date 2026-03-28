@@ -76,7 +76,7 @@ func fetchHeadroom() (*HeadroomResult, error) {
 	for _, cat := range allCats {
 		usagePct := cat.Utilization
 		glidePct := parse.CalcGlideSlope(cat.ResetsAt, cat.WindowSeconds)
-		headroom := glidePct - usagePct
+		headroom := usagePct - glidePct
 		result.Categories = append(result.Categories, HeadroomCategory{
 			Name:        cat.Name,
 			UsagePct:    usagePct,
@@ -106,7 +106,7 @@ func categoryStatus(usagePct, headroom float64) string {
 	switch {
 	case usagePct >= 80:
 		return "conserve"
-	case headroom >= 0:
+	case headroom <= 0:
 		return "plenty of room"
 	default:
 		return "slow down"
