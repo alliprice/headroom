@@ -23,7 +23,7 @@ var (
 	)
 	descHeadroom = prometheus.NewDesc(
 		"llm_quota_headroom_ratio",
-		"Utilization minus glide: positive means over pace, negative means under pace",
+		"Fraction of usage ahead of even pacing. Positive: burning too fast, slow down. Negative: under pace, room to use more.",
 		[]string{"provider", "category"}, nil,
 	)
 	descResetTimestamp = prometheus.NewDesc(
@@ -58,12 +58,12 @@ var (
 	)
 	descGlideHours = prometheus.NewDesc(
 		"llm_quota_glide_hours",
-		"Hours elapsed in quota window (ideal pacing reference)",
+		"Hours into the quota window if usage were perfectly even across the full window",
 		[]string{"provider", "category"}, nil,
 	)
 	descHeadroomHours = prometheus.NewDesc(
 		"llm_quota_headroom_hours",
-		"Hours over or under pace: positive means slow down, negative means room to spare",
+		"Hours of usage ahead of even pacing. Positive: burning too fast, slow down. Negative: under pace, room to use more.",
 		[]string{"provider", "category"}, nil,
 	)
 	descScrapeSuccess = prometheus.NewDesc(
