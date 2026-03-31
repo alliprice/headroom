@@ -15,12 +15,14 @@ func RunJSON() error {
 	}
 
 	type categoryEntry struct {
-		Name        string  `json:"name"`
-		UsagePct    float64 `json:"usage_pct"`
-		GlidePct    float64 `json:"glide_pct"`
-		HeadroomPct float64 `json:"headroom_pct"`
-		Status      string  `json:"status"`
-		Resets      string  `json:"resets"`
+		Name                string  `json:"name"`
+		UsagePct            float64 `json:"usage_pct"`
+		GlidePct            float64 `json:"glide_pct"`
+		HeadroomPct         float64 `json:"headroom_pct"`
+		SleepRecoveryPct    float64 `json:"sleep_recovery_pct"`
+		AdjustedHeadroomPct float64 `json:"adjusted_headroom_pct"`
+		Status              string  `json:"status"`
+		Resets              string  `json:"resets"`
 	}
 
 	type extraEntry struct {
@@ -41,12 +43,14 @@ func RunJSON() error {
 
 	for _, cat := range hr.Categories {
 		out.Categories = append(out.Categories, categoryEntry{
-			Name:        cat.Name,
-			UsagePct:    round1(cat.UsagePct),
-			GlidePct:    round1(cat.GlidePct),
-			HeadroomPct: round1(cat.HeadroomPct),
-			Status:      cat.Status,
-			Resets:      cat.Resets,
+			Name:                cat.Name,
+			UsagePct:            round1(cat.UsagePct),
+			GlidePct:            round1(cat.GlidePct),
+			HeadroomPct:         round1(cat.HeadroomPct),
+			SleepRecoveryPct:    round1(cat.SleepRecoveryPct),
+			AdjustedHeadroomPct: round1(cat.AdjustedHeadroomPct),
+			Status:              cat.Status,
+			Resets:              cat.Resets,
 		})
 	}
 

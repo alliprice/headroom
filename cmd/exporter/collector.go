@@ -66,6 +66,16 @@ var (
 		"Hours of usage ahead of even pacing. Positive: burning too fast, slow down. Negative: under pace, room to use more.",
 		[]string{"provider", "category"}, nil,
 	)
+	descSleepRecovery = prometheus.NewDesc(
+		"llm_quota_sleep_recovery_ratio",
+		"Fraction of quota window recoverable through remaining sleep periods",
+		[]string{"provider", "category"}, nil,
+	)
+	descAdjustedHeadroom = prometheus.NewDesc(
+		"llm_quota_adjusted_headroom_ratio",
+		"Headroom after subtracting sleep recovery. Positive: over pace even accounting for sleep.",
+		[]string{"provider", "category"}, nil,
+	)
 	descScrapeSuccess = prometheus.NewDesc(
 		"llm_scrape_success",
 		"Whether the last provider fetch succeeded (1=yes, 0=no)",
@@ -80,6 +90,7 @@ var (
 	allDescs = []*prometheus.Desc{
 		descUtilization, descGlide, descHeadroom,
 		descGlideHours, descHeadroomHours,
+		descSleepRecovery, descAdjustedHeadroom,
 		descResetTimestamp, descWindowSeconds,
 		descExtraUtilization, descExtraGlide, descExtraUsed, descExtraLimit,
 		descScrapeSuccess, descScrapeTimestamp,
@@ -166,6 +177,10 @@ func (s *providerState) collect(ch chan<- prometheus.Metric) {
 		ch <- prometheus.MustNewConstMetric(descHeadroom, prometheus.GaugeValue, headroom, pid, cat.Name)
 		ch <- prometheus.MustNewConstMetric(descGlideHours, prometheus.GaugeValue, glide*windowHours, pid, cat.Name)
 		ch <- prometheus.MustNewConstMetric(descHeadroomHours, prometheus.GaugeValue, headroom*windowHours, pid, cat.Name)
+		sleepRecovery := parse.CalcSleepRecoveryPct(cat.ResetsAt, cat.WindowSeconds) / 100.0
+		adjustedHeadroom := headroom - sleepRecovery
+		ch <- prometheus.MustNewConstMetric(descSleepRecovery, prometheus.GaugeValue, sleepRecovery, pid, cat.Name)
+		ch <- prometheus.MustNewConstMetric(descAdjustedHeadroom, prometheus.GaugeValue, adjustedHeadroom, pid, cat.Name)
 		ch <- prometheus.MustNewConstMetric(descWindowSeconds, prometheus.GaugeValue, float64(cat.WindowSeconds), pid, cat.Name)
 
 		if cat.ResetsAt != "" {

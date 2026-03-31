@@ -20,6 +20,7 @@ var (
 var (
 	rgbBarEmpty = [3]uint8{0x1E, 0x10, 0x28} // matches colorBarEmpty
 	rgbGlide    = [3]uint8{0xF5, 0xF3, 0xFF} // matches colorGlide
+	rgbError    = [3]uint8{0xEF, 0x44, 0x44} // matches colorError
 )
 
 var (

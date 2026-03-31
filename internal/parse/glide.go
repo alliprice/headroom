@@ -56,6 +56,48 @@ func FormatMonthReset() string {
 	return "Resets " + nextFirst.Format("Jan 2")
 }
 
+const DefaultSleepHoursPerNight = 7.0
+
+func CalcSleepRecoveryPct(resetsAt string, windowSeconds int) float64 {
+	if resetsAt == "" || windowSeconds <= 0 {
+		return 0.0
+	}
+
+	t, err := time.Parse(time.RFC3339, resetsAt)
+	if err != nil {
+		return 0.0
+	}
+
+	now := NowFunc()
+	loc := now.Location()
+	localReset := t.In(loc)
+
+	nowDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	resetDate := time.Date(localReset.Year(), localReset.Month(), localReset.Day(), 0, 0, 0, 0, loc)
+
+	nights := int(resetDate.Sub(nowDate) / (24 * time.Hour))
+	if nights < 0 {
+		nights = 0
+	}
+
+	sleepSeconds := float64(nights) * DefaultSleepHoursPerNight * 3600
+	pct := sleepSeconds / float64(windowSeconds) * 100
+	if pct > 100 {
+		pct = 100
+	}
+	return pct
+}
+
+func CalcSleepAdjustedGlide(resetsAt string, windowSeconds int) float64 {
+	glide := CalcGlideSlope(resetsAt, windowSeconds)
+	recovery := CalcSleepRecoveryPct(resetsAt, windowSeconds)
+	adj := glide + recovery
+	if adj > 100 {
+		return 100.0
+	}
+	return adj
+}
+
 // FormatResetTime returns a human-readable string describing when resetsAt
 // will occur relative to now. resetsAt is an ISO 8601 / RFC 3339 timestamp.
 // Returns "" if resetsAt is empty or unparseable.
