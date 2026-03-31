@@ -24,16 +24,19 @@ var (
 )
 
 // lerpRGB linearly interpolates between two RGB colors at fraction t in [0,1].
+// Uses integer arithmetic (fixed-point with 16-bit fraction) to ensure
+// identical results across ARM/x86 - float lerp differs due to FMA.
 func lerpRGB(a, b [3]uint8, t float64) (uint8, uint8, uint8) {
-	lerp := func(x, y uint8, t float64) uint8 {
-		// Separate multiplications prevent FMA from altering rounding
-		// across ARM/x86. Both paths must produce identical uint8 results
-		// for golden-file tests to be cross-platform.
-		lo := float64(x) * (1 - t)
-		hi := float64(y) * t
-		return uint8(math.Round(lo + hi))
+	tFixed := int(t*65536 + 0.5) // 16-bit fixed point
+	if tFixed < 0 {
+		tFixed = 0
+	} else if tFixed > 65536 {
+		tFixed = 65536
 	}
-	return lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)
+	lerp := func(x, y uint8) uint8 {
+		return uint8((int(x)*(65536-tFixed) + int(y)*tFixed + 32768) >> 16)
+	}
+	return lerp(a[0], b[0]), lerp(a[1], b[1]), lerp(a[2], b[2])
 }
 
 // RenderBar returns a string representing a usage bar with a glide slope
