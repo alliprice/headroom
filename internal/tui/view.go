@@ -576,12 +576,10 @@ func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width i
 			lineIdx++
 		}
 		extraUsage := extra.Utilization
-		extraGlide := parse.CalcMonthGlide()
-		extraOpacity := 1.0
 		if animFn != nil {
-			extraUsage, extraGlide, extraOpacity = animFn("extra_usage", extraUsage, extraGlide)
+			extraUsage, _, _ = animFn("extra_usage", extraUsage, 0)
 		}
-		lines = append(lines, RenderBar(width, extraUsage, extraGlide, extraOpacity, 0.0))
+		lines = append(lines, RenderBar(width, extraUsage, 0, 0, 0))
 		lineIdx++
 		barInfos = append(barInfos, barLineInfo{key: "extra_usage", relY: extraStartY, height: lineIdx - extraStartY})
 	}
