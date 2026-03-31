@@ -80,7 +80,9 @@ func (m Model) View() tea.View {
 	// Error line (rendered above panels when present).
 	var errorLine string
 	if m.errorMsg != "" {
-		errorLine = errorStyle.Render(truncate(m.errorMsg, w-4))
+		marker := errorStyle.Render("\u00d7")
+		msg := dimStyle.Render(truncate(m.errorMsg, w-6))
+		errorLine = lipgloss.PlaceHorizontal(w, lipgloss.Center, marker+" "+msg)
 	}
 
 	// Empty state.
@@ -445,7 +447,8 @@ func (m Model) renderFlatGeneric(allCats []parse.Category, statusBar, errorLine 
 	for _, cat := range allCats {
 		usage := cat.Utilization
 		glide := parse.CalcGlideSlope(cat.ResetsAt, cat.WindowSeconds)
-		lines = append(lines, RenderBar(w, usage, glide, 1.0))
+		sleepAdjGlide := parse.CalcSleepAdjustedGlide(cat.ResetsAt, cat.WindowSeconds)
+		lines = append(lines, RenderBar(w, usage, glide, 1.0, sleepAdjGlide))
 	}
 
 	body := strings.Join(lines, "\n")
@@ -543,11 +546,12 @@ func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width i
 			lineIdx++
 		}
 
+		sleepAdjGlide := parse.CalcSleepAdjustedGlide(cat.ResetsAt, cat.WindowSeconds)
 		animUsage, animGlide, opacity := usage, glide, 1.0
 		if animFn != nil {
 			animUsage, animGlide, opacity = animFn(cat.Key, usage, glide)
 		}
-		lines = append(lines, RenderBar(width, animUsage, animGlide, opacity))
+		lines = append(lines, RenderBar(width, animUsage, animGlide, opacity, sleepAdjGlide))
 		lineIdx++
 		barInfos = append(barInfos, barLineInfo{key: cat.Key, relY: catStartY, height: lineIdx - catStartY})
 
@@ -577,7 +581,7 @@ func renderPanelWithGeom(cats []parse.Category, extra *parse.ExtraUsage, width i
 		if animFn != nil {
 			extraUsage, extraGlide, extraOpacity = animFn("extra_usage", extraUsage, extraGlide)
 		}
-		lines = append(lines, RenderBar(width, extraUsage, extraGlide, extraOpacity))
+		lines = append(lines, RenderBar(width, extraUsage, extraGlide, extraOpacity, 0.0))
 		lineIdx++
 		barInfos = append(barInfos, barLineInfo{key: "extra_usage", relY: extraStartY, height: lineIdx - extraStartY})
 	}
