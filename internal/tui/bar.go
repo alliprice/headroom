@@ -26,7 +26,12 @@ var (
 // lerpRGB linearly interpolates between two RGB colors at fraction t in [0,1].
 func lerpRGB(a, b [3]uint8, t float64) (uint8, uint8, uint8) {
 	lerp := func(x, y uint8, t float64) uint8 {
-		return uint8(float64(x)*(1-t) + float64(y)*t + 0.5)
+		// Separate multiplications prevent FMA from altering rounding
+		// across ARM/x86. Both paths must produce identical uint8 results
+		// for golden-file tests to be cross-platform.
+		lo := float64(x) * (1 - t)
+		hi := float64(y) * t
+		return uint8(math.Round(lo + hi))
 	}
 	return lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)
 }
