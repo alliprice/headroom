@@ -31,7 +31,7 @@ func probeCodex() bool {
 func fetchCodex() (*FetchResult, bool, error) {
 	data, err := fetchCodexRPC()
 	if err != nil {
-		return nil, false, err
+		return nil, false, fmt.Errorf("%s", humanizeError("Codex", err))
 	}
 	if data == nil {
 		return &FetchResult{}, false, nil

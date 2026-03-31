@@ -9,12 +9,14 @@ import (
 
 // HeadroomCategory holds computed headroom data for a single usage category.
 type HeadroomCategory struct {
-	Name        string
-	UsagePct    float64
-	GlidePct    float64
-	HeadroomPct float64
-	Status      string // "plenty of room" | "slow down" | "conserve"
-	Resets      string
+	Name                string
+	UsagePct            float64
+	GlidePct            float64
+	HeadroomPct         float64
+	SleepRecoveryPct    float64
+	AdjustedHeadroomPct float64
+	Status              string // "plenty of room" | "slow down" | "conserve"
+	Resets              string
 }
 
 // HeadroomExtra holds computed headroom data for extra (dollar) usage.
@@ -76,14 +78,18 @@ func fetchHeadroom() (*HeadroomResult, error) {
 	for _, cat := range allCats {
 		usagePct := cat.Utilization
 		glidePct := parse.CalcGlideSlope(cat.ResetsAt, cat.WindowSeconds)
-		headroom := glidePct - usagePct
+		headroom := usagePct - glidePct
+		sleepRecovery := parse.CalcSleepRecoveryPct(cat.ResetsAt, cat.WindowSeconds)
+		adjustedHeadroom := headroom - sleepRecovery
 		result.Categories = append(result.Categories, HeadroomCategory{
-			Name:        cat.Name,
-			UsagePct:    usagePct,
-			GlidePct:    glidePct,
-			HeadroomPct: headroom,
-			Status:      categoryStatus(usagePct, headroom),
-			Resets:      parse.FormatResetTime(cat.ResetsAt),
+			Name:                cat.Name,
+			UsagePct:            usagePct,
+			GlidePct:            glidePct,
+			HeadroomPct:         headroom,
+			SleepRecoveryPct:    sleepRecovery,
+			AdjustedHeadroomPct: adjustedHeadroom,
+			Status:              categoryStatus(usagePct, headroom, adjustedHeadroom),
+			Resets:              parse.FormatResetTime(cat.ResetsAt),
 		})
 	}
 
@@ -102,14 +108,16 @@ func fetchHeadroom() (*HeadroomResult, error) {
 }
 
 // categoryStatus returns the status string for a usage category.
-func categoryStatus(usagePct, headroom float64) string {
+func categoryStatus(usagePct, headroom, adjustedHeadroom float64) string {
 	switch {
 	case usagePct >= 80:
 		return "conserve"
-	case headroom >= 0:
-		return "plenty of room"
-	default:
+	case adjustedHeadroom > 0:
+		return "conserve"
+	case headroom > 0:
 		return "slow down"
+	default:
+		return "plenty of room"
 	}
 }
 

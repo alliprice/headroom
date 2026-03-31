@@ -12,13 +12,15 @@ func RunStatus() error {
 
 	for _, cat := range hr.Categories {
 		var pace string
-		switch cat.Status {
-		case "conserve":
+		switch {
+		case cat.Status == "conserve" && cat.AdjustedHeadroomPct > 0 && cat.UsagePct < 80:
+			pace = fmt.Sprintf("%.0f%% over sleep-adjusted pace, conserve", cat.AdjustedHeadroomPct)
+		case cat.Status == "conserve":
 			pace = fmt.Sprintf("%+.0f%% vs pace, conserve usage", cat.HeadroomPct)
-		case "plenty of room":
-			pace = fmt.Sprintf("%.0f%% under pace, plenty of room", cat.HeadroomPct)
-		default: // "slow down"
-			pace = fmt.Sprintf("%.0f%% over pace, slow down", -cat.HeadroomPct)
+		case cat.Status == "slow down":
+			pace = fmt.Sprintf("%.0f%% over pace (sleep will recover), slow down", cat.HeadroomPct)
+		default: // "plenty of room"
+			pace = fmt.Sprintf("%.0f%% under pace, plenty of room", -cat.HeadroomPct)
 		}
 		fmt.Printf("%s: %.0f%% used | %s | %s\n", cat.Name, cat.UsagePct, pace, cat.Resets)
 	}

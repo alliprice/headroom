@@ -125,6 +125,40 @@ func TestParseGemini_FullRemaining_Skipped(t *testing.T) {
 	}
 }
 
+func TestParseGemini_UnprovisionedModel_Skipped(t *testing.T) {
+	// The API returns remainingFraction=0 with epoch-zero reset time for
+	// models not available on the current tier. These should be skipped.
+	data := map[string]any{
+		"buckets": []any{
+			map[string]any{
+				"modelId":           "gemini-2.5-pro",
+				"remainingFraction": 0.0,
+				"resetTime":         "1970-01-01T00:00:00Z",
+			},
+			map[string]any{
+				"modelId":           "gemini-3-pro-preview",
+				"remainingFraction": 0.0,
+				"resetTime":         "1970-01-01T00:00:00Z",
+			},
+			map[string]any{
+				"modelId":           "gemini-2.5-flash",
+				"remainingFraction": 0.8,
+				"resetTime":         "2026-03-29T16:53:08Z",
+			},
+		},
+	}
+	cats := parseGemini(data)
+	if len(cats) != 1 {
+		t.Fatalf("expected 1 category (only flash), got %d", len(cats))
+	}
+	if cats[0].Key != "gemini_flash" {
+		t.Errorf("Key = %q, want %q", cats[0].Key, "gemini_flash")
+	}
+	if cats[0].Utilization < 19.9 || cats[0].Utilization > 20.1 {
+		t.Errorf("Utilization = %f, want ~20", cats[0].Utilization)
+	}
+}
+
 func TestParseGemini_NoBucketsKey(t *testing.T) {
 	data := map[string]any{"other": "stuff"}
 	cats := parseGemini(data)

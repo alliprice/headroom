@@ -153,7 +153,7 @@ func fetchGemini() (*FetchResult, bool, error) {
 			strings.Contains(err.Error(), "authenticate") ||
 			strings.Contains(err.Error(), "401") ||
 			strings.Contains(err.Error(), "403")
-		return nil, isAuth, err
+		return nil, isAuth, fmt.Errorf("%s", humanizeError("Gemini", err))
 	}
 	cats := parseGemini(data)
 	return &FetchResult{Categories: cats}, false, nil
@@ -268,6 +268,13 @@ func parseGemini(data map[string]any) []parse.Category {
 
 		family := geminiFamily(modelID)
 		resetTime, _ := parse.AsString(bucket["resetTime"])
+
+		// Skip unprovisioned models. The API returns remainingFraction=0
+		// with an epoch-zero reset time for models not available on the
+		// current tier, which is distinct from genuinely exhausted quota.
+		if remaining == 0 && strings.HasPrefix(resetTime, "1970-01-01") {
+			continue
+		}
 
 		if existing, ok := families[family]; ok {
 			// Keep the most-used (lowest remaining) value.

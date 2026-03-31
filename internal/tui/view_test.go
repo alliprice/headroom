@@ -65,23 +65,26 @@ func freezeTimeAndTZ(t *testing.T) {
 
 func TestRenderBar_Golden(t *testing.T) {
 	cases := []struct {
-		name    string
-		width   int
-		usage   float64
-		glide   float64
-		opacity float64
+		name         string
+		width        int
+		usage        float64
+		glide        float64
+		opacity      float64
+		sleepAdjGlide float64
 	}{
-		{"bar_50pct_80w", 80, 50.0, 40.0, 1.0},
-		{"bar_90pct_80w", 80, 90.0, 60.0, 1.0},
-		{"bar_10pct_40w", 40, 10.0, 30.0, 1.0},
-		{"bar_0pct_80w", 80, 0.0, 25.0, 1.0},
-		{"bar_100pct_80w", 80, 100.0, 80.0, 1.0},
-		{"bar_half_opacity", 80, 50.0, 40.0, 0.5},
-		{"bar_zero_opacity", 80, 50.0, 40.0, 0.0},
+		{"bar_50pct_80w", 80, 50.0, 40.0, 1.0, 55.0},
+		{"bar_90pct_80w", 80, 90.0, 60.0, 1.0, 75.0},
+		{"bar_10pct_40w", 40, 10.0, 30.0, 1.0, 45.0},
+		{"bar_0pct_80w", 80, 0.0, 25.0, 1.0, 40.0},
+		{"bar_100pct_80w", 80, 100.0, 80.0, 1.0, 90.0},
+		{"bar_half_opacity", 80, 50.0, 40.0, 0.5, 55.0},
+		{"bar_zero_opacity", 80, 50.0, 40.0, 0.0, 55.0},
+		{"bar_sleep_adj_visible", 80, 70.0, 40.0, 1.0, 60.0},
+		{"bar_sleep_adj_same", 80, 70.0, 40.0, 1.0, 40.0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := RenderBar(tc.width, tc.usage, tc.glide, tc.opacity)
+			got := RenderBar(tc.width, tc.usage, tc.glide, tc.opacity, tc.sleepAdjGlide)
 			assertGolden(t, "bar_"+tc.name, got)
 		})
 	}
