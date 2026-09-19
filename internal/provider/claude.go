@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -258,92 +259,109 @@ func fetchClaudeAPI(token string) (map[string]any, error) {
 	return data, nil
 }
 
+// claudeWindowPrefixes derives a window from an unmapped meter's key. A slice
+// rather than a map so the match order is fixed.
+var claudeWindowPrefixes = []struct {
+	prefix  string
+	seconds int
+}{
+	{"seven_day_", 7 * 24 * 3600},
+	{"five_hour_", 5 * 3600},
+}
+
+// claudeCategory builds a usage category from one entry of the usage API.
+//
+// A meter with no reset time has no window to pace against, so it is not a
+// quota bar. Anthropic ships feature flags through this same endpoint shaped
+// like meters - nimbus_quill arrives as an object carrying utilization 0 and a
+// null resets_at - and the reset time is what tells the two apart. Never an
+// allowlist of known ids: Anthropic does publish genuinely new meters, and
+// those have to appear on their own.
+func claudeCategory(key string, entry map[string]any) (parse.Category, bool) {
+	resetsAt, ok := parse.AsString(entry["resets_at"])
+	if !ok || resetsAt == "" {
+		return parse.Category{}, false
+	}
+
+	utilization, hasUtil := parse.AsFloat64(entry["utilization"])
+	if !hasUtil {
+		utilization = 0
+	}
+
+	name, hasName := claudeDisplayNames[key]
+	window, hasWindow := claudeWindowDurations[key]
+
+	// An unmapped meter takes its name and window from its prefix, so a newly
+	// published seven_day_fable reads "Fable" over seven days, the way
+	// seven_day_opus already reads "Opus".
+	if !hasName || !hasWindow {
+		for _, p := range claudeWindowPrefixes {
+			if !strings.HasPrefix(key, p.prefix) {
+				continue
+			}
+			if !hasName {
+				name, hasName = titleCase(strings.TrimPrefix(key, p.prefix)), true
+			}
+			if !hasWindow {
+				window, hasWindow = p.seconds, true
+			}
+			break
+		}
+	}
+	if !hasName {
+		name = titleCase(key)
+	}
+	if !hasWindow {
+		window = 7 * 24 * 3600
+	}
+
+	return parse.Category{
+		Key:           key,
+		Name:          name,
+		Utilization:   utilization,
+		ResetsAt:      resetsAt,
+		WindowSeconds: window,
+	}, true
+}
+
 // parseClaude parses the raw Claude usage API response into categories and
 // optional extra usage.
 func parseClaude(data map[string]any) ([]parse.Category, *parse.ExtraUsage) {
 	var categories []parse.Category
 	seen := make(map[string]bool)
 
+	add := func(key string) {
+		entry, ok := data[key].(map[string]any)
+		if !ok {
+			return
+		}
+		if category, ok := claudeCategory(key, entry); ok {
+			categories = append(categories, category)
+		}
+	}
+
 	// First pass: emit known keys in preferred order.
 	for _, key := range claudeCategoryOrder {
-		raw, ok := data[key]
-		if !ok {
+		if _, ok := data[key]; !ok {
 			continue
 		}
 		seen[key] = true
-
-		entry, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		utilization, hasUtil := parse.AsFloat64(entry["utilization"])
-		resetsAt, hasResets := parse.AsString(entry["resets_at"])
-
-		if !hasUtil && !hasResets {
-			continue
-		}
-		if !hasUtil {
-			utilization = 0.0
-		}
-
-		window, wok := claudeWindowDurations[key]
-		if !wok {
-			window = 5 * 3600
-		}
-
-		name, nok := claudeDisplayNames[key]
-		if !nok {
-			name = key
-		}
-
-		categories = append(categories, parse.Category{
-			Key:           key,
-			Name:          name,
-			Utilization:   utilization,
-			ResetsAt:      resetsAt,
-			WindowSeconds: window,
-		})
+		add(key)
 	}
 
-	// Second pass: any remaining keys not yet seen and not "extra_usage".
-	for key, raw := range data {
+	// Second pass: everything else the API publishes, sorted. Ranging a Go map
+	// is randomised, which would shuffle the bars between refreshes as soon as
+	// more than one unmapped meter is live.
+	rest := make([]string, 0, len(data))
+	for key := range data {
 		if seen[key] || key == "extra_usage" {
 			continue
 		}
-
-		entry, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-
-		utilization, hasUtil := parse.AsFloat64(entry["utilization"])
-		resetsAt, hasResets := parse.AsString(entry["resets_at"])
-
-		if !hasUtil && !hasResets {
-			continue
-		}
-		if !hasUtil {
-			utilization = 0.0
-		}
-
-		window, wok := claudeWindowDurations[key]
-		if !wok {
-			window = 7 * 24 * 3600
-		}
-
-		name, nok := claudeDisplayNames[key]
-		if !nok {
-			name = titleCase(key)
-		}
-
-		categories = append(categories, parse.Category{
-			Key:           key,
-			Name:          name,
-			Utilization:   utilization,
-			ResetsAt:      resetsAt,
-			WindowSeconds: window,
-		})
+		rest = append(rest, key)
+	}
+	sort.Strings(rest)
+	for _, key := range rest {
+		add(key)
 	}
 
 	// Parse extra_usage block.
