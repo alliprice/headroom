@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // mock credential provider for chain tests
@@ -154,5 +155,85 @@ func TestFileProviderConfigDirOverride(t *testing.T) {
 	}
 	if tok != "sk-override-token" {
 		t.Fatalf("got %q, want %q", tok, "sk-override-token")
+	}
+}
+
+// expiry tests
+
+func TestTokenAtUnexpired(t *testing.T) {
+	var creds claudeCredentials
+	creds.ClaudeAiOauth.AccessToken = "sk-live"
+	creds.ClaudeAiOauth.ExpiresAt = time.Now().Add(time.Hour).UnixMilli()
+
+	tok, err := creds.tokenAt(time.Now())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tok != "sk-live" {
+		t.Fatalf("got %q, want %q", tok, "sk-live")
+	}
+}
+
+func TestTokenAtExpired(t *testing.T) {
+	var creds claudeCredentials
+	creds.ClaudeAiOauth.AccessToken = "sk-stale"
+	creds.ClaudeAiOauth.ExpiresAt = time.Now().Add(-time.Hour).UnixMilli()
+
+	_, err := creds.tokenAt(time.Now())
+	if err == nil {
+		t.Fatal("expected error for expired token")
+	}
+}
+
+// Older credentials files carry no expiresAt. Absent must not mean expired.
+func TestTokenAtNoExpiryRecorded(t *testing.T) {
+	var creds claudeCredentials
+	creds.ClaudeAiOauth.AccessToken = "sk-no-expiry"
+
+	tok, err := creds.tokenAt(time.Now())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tok != "sk-no-expiry" {
+		t.Fatalf("got %q, want %q", tok, "sk-no-expiry")
+	}
+}
+
+func TestFileProviderExpiredToken(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", dir)
+	data := fmt.Sprintf(`{"claudeAiOauth":{"accessToken":"sk-stale","expiresAt":%d}}`,
+		time.Now().Add(-time.Hour).UnixMilli())
+	if err := os.WriteFile(filepath.Join(dir, ".credentials.json"), []byte(data), 0600); err != nil {
+		t.Fatal(err)
+	}
+	p := claudeFileProvider{}
+	_, err := p.getToken()
+	if err == nil {
+		t.Fatal("expected error for expired token in credentials file")
+	}
+}
+
+// The regression: a dead credentials file used to satisfy the chain and hide
+// the keychain behind it, so every fetch 401ed until the file was removed.
+func TestChainSkipsExpiredFileForKeychain(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", dir)
+	data := fmt.Sprintf(`{"claudeAiOauth":{"accessToken":"sk-stale","expiresAt":%d}}`,
+		time.Now().Add(-time.Hour).UnixMilli())
+	if err := os.WriteFile(filepath.Join(dir, ".credentials.json"), []byte(data), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	chain := []claudeCredentialProvider{
+		claudeFileProvider{},
+		mockCredentialProvider{tok: "sk-keychain"},
+	}
+	tok, err := claudeGetAccessTokenFromChain(chain)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tok != "sk-keychain" {
+		t.Fatalf("got %q, want %q", tok, "sk-keychain")
 	}
 }

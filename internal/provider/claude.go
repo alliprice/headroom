@@ -52,7 +52,27 @@ var claudeCategoryOrder = []string{"five_hour", "seven_day", "seven_day_opus"}
 type claudeCredentials struct {
 	ClaudeAiOauth struct {
 		AccessToken string `json:"accessToken"`
+		ExpiresAt   int64  `json:"expiresAt"`
 	} `json:"claudeAiOauth"`
+}
+
+// tokenAt returns the access token, rejecting one that has already expired.
+// Expiry has to be caught here rather than left to the API: the chain stops at
+// the first source that yields a token, so a stale credentials file shadows a
+// live keychain entry for as long as it sits on disk. ExpiresAt is epoch
+// milliseconds and is absent in older files, so zero means no expiry recorded.
+func (c claudeCredentials) tokenAt(now time.Time) (string, error) {
+	token := c.ClaudeAiOauth.AccessToken
+	if token == "" {
+		return "", fmt.Errorf("no token found")
+	}
+	if c.ClaudeAiOauth.ExpiresAt > 0 {
+		expiry := time.UnixMilli(c.ClaudeAiOauth.ExpiresAt)
+		if !now.Before(expiry) {
+			return "", fmt.Errorf("token expired %s ago", now.Sub(expiry).Round(time.Second))
+		}
+	}
+	return token, nil
 }
 
 // claudeConfigDir returns the Claude Code config directory.
@@ -126,9 +146,9 @@ func (claudeFileProvider) getToken() (string, error) {
 		return "", fmt.Errorf("credentials file: invalid JSON: %w", err)
 	}
 
-	token := creds.ClaudeAiOauth.AccessToken
-	if token == "" {
-		return "", fmt.Errorf("credentials file: no token found")
+	token, err := creds.tokenAt(time.Now())
+	if err != nil {
+		return "", fmt.Errorf("credentials file: %w", err)
 	}
 	return token, nil
 }
@@ -166,9 +186,9 @@ func (claudeKeychainProvider) getToken() (string, error) {
 		return "", fmt.Errorf("invalid credentials - run 'claude' to re-authenticate")
 	}
 
-	token := creds.ClaudeAiOauth.AccessToken
-	if token == "" {
-		return "", fmt.Errorf("no token found - run 'claude' to authenticate")
+	token, err := creds.tokenAt(time.Now())
+	if err != nil {
+		return "", fmt.Errorf("%w - run 'claude' to re-authenticate", err)
 	}
 
 	return token, nil
