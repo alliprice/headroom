@@ -3,6 +3,7 @@ package provider
 import (
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"testing"
 	"time"
@@ -235,5 +236,32 @@ func TestChainSkipsExpiredFileForKeychain(t *testing.T) {
 	}
 	if tok != "sk-keychain" {
 		t.Fatalf("got %q, want %q", tok, "sk-keychain")
+	}
+}
+
+// keychain account selection
+
+// Several keychain items may share one service name, separated only by
+// account, and an unqualified lookup returns an arbitrary one. Claude Code
+// writes under the macOS username, so that has to be asked for by name or a
+// stale duplicate filed under another account shadows the live credential.
+func TestKeychainAccountsAskForUsernameFirst(t *testing.T) {
+	accounts := claudeKeychainAccounts()
+	if len(accounts) == 0 {
+		t.Fatal("expected at least one account to try")
+	}
+	if last := accounts[len(accounts)-1]; last != "" {
+		t.Errorf("last account = %q, want the unqualified lookup as fallback", last)
+	}
+
+	u, err := user.Current()
+	if err != nil || u.Username == "" {
+		t.Skip("no current user to compare against")
+	}
+	if accounts[0] != u.Username {
+		t.Errorf("first account = %q, want the macOS username %q", accounts[0], u.Username)
+	}
+	if len(accounts) != 2 {
+		t.Errorf("accounts = %v, want the username then the unqualified fallback", accounts)
 	}
 }

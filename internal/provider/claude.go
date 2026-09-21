@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -158,11 +159,50 @@ func (claudeFileProvider) getToken() (string, error) {
 
 type claudeKeychainProvider struct{}
 
+// claudeKeychainAccounts lists the keychain accounts to try, in order.
+//
+// The keychain allows several items to share one service name, distinguished
+// only by account, and an unqualified lookup returns an arbitrary one of them.
+// Claude Code writes under the macOS username, so ask for that first; a stale
+// duplicate filed under another account would otherwise shadow the live
+// credential. The empty account keeps the old unqualified lookup as a
+// fallback, for a machine where Claude Code used some other account name.
+func claudeKeychainAccounts() []string {
+	var accounts []string
+	if u, err := user.Current(); err == nil && u.Username != "" {
+		accounts = append(accounts, u.Username)
+	}
+	return append(accounts, "")
+}
+
 func (claudeKeychainProvider) getToken() (string, error) {
+	var lastErr error
+	for _, account := range claudeKeychainAccounts() {
+		token, err := claudeKeychainToken(account)
+		if err == nil {
+			return token, nil
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no keychain accounts to try")
+	}
+	return "", lastErr
+}
+
+// claudeKeychainToken reads one keychain item. An empty account leaves the
+// choice to the keychain.
+func claudeKeychainToken(account string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "security", "find-generic-password", "-s", "Claude Code-credentials", "-w")
+	args := []string{"find-generic-password", "-s", "Claude Code-credentials"}
+	if account != "" {
+		args = append(args, "-a", account)
+	}
+	args = append(args, "-w")
+
+	cmd := exec.CommandContext(ctx, "security", args...)
 	out, err := cmd.Output()
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
