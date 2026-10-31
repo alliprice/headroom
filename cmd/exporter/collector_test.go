@@ -14,9 +14,14 @@ import (
 
 func gatherState(t *testing.T, state *providerState) map[string]*dto.MetricFamily {
 	t.Helper()
+	return gatherCollector(t, &multiCollector{local: []*providerState{state}})
+}
+
+func gatherCollector(t *testing.T, mc *multiCollector) map[string]*dto.MetricFamily {
+	t.Helper()
 
 	registry := prometheus.NewRegistry()
-	registry.MustRegister(&multiCollector{providers: []*providerState{state}})
+	registry.MustRegister(mc)
 	families, err := registry.Gather()
 	if err != nil {
 		t.Fatalf("gather metrics: %v", err)
@@ -27,6 +32,37 @@ func gatherState(t *testing.T, state *providerState) map[string]*dto.MetricFamil
 		result[family.GetName()] = family
 	}
 	return result
+}
+
+// gaugeWith returns the one gauge in family name whose labels include all of
+// want.
+func gaugeWith(t *testing.T, families map[string]*dto.MetricFamily, name string, want map[string]string) float64 {
+	t.Helper()
+	family, ok := families[name]
+	if !ok {
+		t.Fatalf("missing family %q", name)
+	}
+	var found []*dto.Metric
+	for _, m := range family.Metric {
+		labels := make(map[string]string, len(m.Label))
+		for _, l := range m.Label {
+			labels[l.GetName()] = l.GetValue()
+		}
+		match := true
+		for k, v := range want {
+			if labels[k] != v {
+				match = false
+				break
+			}
+		}
+		if match {
+			found = append(found, m)
+		}
+	}
+	if len(found) != 1 || found[0].Gauge == nil {
+		t.Fatalf("%s%v matched %d gauges, want 1", name, want, len(found))
+	}
+	return found[0].Gauge.GetValue()
 }
 
 func gaugeValue(t *testing.T, families map[string]*dto.MetricFamily, name string) float64 {
@@ -51,7 +87,7 @@ func testResult(utilization float64) *provider.FetchResult {
 func assertNoUsageMetrics(t *testing.T, families map[string]*dto.MetricFamily) {
 	t.Helper()
 	for name := range families {
-		if strings.HasPrefix(name, "llm_quota_") || strings.HasPrefix(name, "llm_extra_") {
+		if strings.HasPrefix(name, "llm_quota_") || strings.HasPrefix(name, "llm_extra_") || strings.HasPrefix(name, "llm_credit_") {
 			t.Errorf("ineligible cache emitted %s", name)
 		}
 	}
@@ -314,8 +350,8 @@ func TestSuccessfulFetchRecoversCache(t *testing.T) {
 
 func TestMultiCollectorAddKeepsResolvedDurations(t *testing.T) {
 	mc := newMultiCollector()
-	mc.add(provider.Provider{ID: "codex"}, 10*time.Minute, 35*time.Minute)
-	if len(mc.providers) != 1 || mc.providers[0].interval != 10*time.Minute || mc.providers[0].maxAge != 35*time.Minute {
+	mc.addLocal(provider.Provider{ID: "codex"}, nil, 10*time.Minute, 35*time.Minute)
+	if len(mc.local) != 1 || mc.local[0].interval != 10*time.Minute || mc.local[0].maxAge != 35*time.Minute {
 		t.Fatal("collector did not retain resolved provider durations")
 	}
 }

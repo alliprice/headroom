@@ -2,7 +2,10 @@ package provider
 
 import (
 	"errors"
+	"fmt"
+	"net/http"
 	"testing"
+	"time"
 )
 
 func TestHumanizeError(t *testing.T) {
@@ -135,5 +138,63 @@ func TestHumanizeError(t *testing.T) {
 				t.Errorf("humanizeError() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestParseRetryAfter(t *testing.T) {
+	now := time.Date(2026, time.October, 31, 22, 0, 0, 0, time.UTC)
+	for _, tt := range []struct {
+		name   string
+		value  string
+		want   time.Duration
+		wantOK bool
+	}{
+		{"seconds", "2593", 2593 * time.Second, true},
+		{"seconds with space", " 120 ", 2 * time.Minute, true},
+		{"zero", "0", 0, true},
+		{"seconds capped", "86400", 6 * time.Hour, true},
+		{"huge seconds capped", "99999999999999999", 6 * time.Hour, true},
+		{"http date", now.Add(90 * time.Second).Format(http.TimeFormat), 90 * time.Second, true},
+		{"http date capped", now.Add(48 * time.Hour).Format(http.TimeFormat), 6 * time.Hour, true},
+		{"http date in the past", now.Add(-time.Minute).Format(http.TimeFormat), 0, true},
+		{"empty", "", 0, false},
+		{"negative", "-5", 0, false},
+		{"garbage", "soon", 0, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := parseRetryAfter(tt.value, now)
+			if got != tt.want || ok != tt.wantOK {
+				t.Fatalf("parseRetryAfter(%q) = %s, %v; want %s, %v", tt.value, got, ok, tt.want, tt.wantOK)
+			}
+		})
+	}
+}
+
+func TestRetryAfterThroughWrapping(t *testing.T) {
+	inner := &RetryAfterError{Wait: 2593 * time.Second, Err: errors.New("API error: 429 Too Many Requests")}
+	wrapped := fmt.Errorf("outer: %w", inner)
+	if wait, ok := RetryAfter(wrapped); !ok || wait != 2593*time.Second {
+		t.Fatalf("RetryAfter(wrapped) = %s, %v", wait, ok)
+	}
+	if _, ok := RetryAfter(errors.New("plain")); ok {
+		t.Fatal("plain error reported a retry wait")
+	}
+	if _, ok := RetryAfter(nil); ok {
+		t.Fatal("nil error reported a retry wait")
+	}
+}
+
+// humanize used to be fmt.Errorf("%s", humanizeError(...)), which dropped the
+// error's type and with it the server's Retry-After.
+func TestHumanizeKeepsRetryAfter(t *testing.T) {
+	err := humanize("Claude", &RetryAfterError{Wait: 43 * time.Minute, Err: errors.New("API error: 429 Too Many Requests")})
+	if got, want := err.Error(), "Claude: rate limited - will retry"; got != want {
+		t.Errorf("message = %q, want %q", got, want)
+	}
+	if wait, ok := RetryAfter(err); !ok || wait != 43*time.Minute {
+		t.Fatalf("RetryAfter(humanized) = %s, %v; want 43m, true", wait, ok)
+	}
+	if humanize("Claude", nil) != nil {
+		t.Fatal("humanize(nil) is not nil")
 	}
 }

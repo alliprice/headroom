@@ -1,11 +1,19 @@
 package provider
 
-import "github.com/alliprice/headroom/internal/parse"
+import (
+	"time"
+
+	"github.com/alliprice/headroom/internal/parse"
+)
 
 // FetchResult carries parsed usage data from a single provider.
 type FetchResult struct {
 	Categories []parse.Category
 	Extra      *parse.ExtraUsage // nil if provider doesn't have it
+	Credits    []parse.Credit    // dollar allowances, kept apart from quota windows
+	// ObservedAt is when the data was true, for a fetch that reads a record
+	// rather than asking upstream. Zero means now.
+	ObservedAt time.Time
 }
 
 // Provider is a declarative description of a usage data source.

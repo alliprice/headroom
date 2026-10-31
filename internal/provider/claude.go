@@ -19,15 +19,36 @@ import (
 	"github.com/alliprice/headroom/internal/parse"
 )
 
-// Claude is the provider for Claude API usage data.
-var Claude = Provider{
-	ID:          "claude",
-	DisplayName: "Claude",
-	CategoryIDs: []string{"five_hour", "seven_day", "seven_day_opus"},
-	Probe:       nil, // always attempted
-	Fetch:       fetchClaude,
-	Demo:        demoClaude,
+const (
+	claudeDefaultBaseURL = "https://api.anthropic.com"
+	claudeUsagePath      = "/api/oauth/usage"
+	claudeOAuthBeta      = "oauth-2025-04-20"
+	claudeHTTPTimeout    = 10 * time.Second
+)
+
+// ClaudeSource says where a Claude provider gets its token and how it reaches
+// the usage API. A zero field keeps the local behavior: the credential chain,
+// a 10s client, and api.anthropic.com.
+type ClaudeSource struct {
+	Token   func() (string, error)
+	Client  *http.Client
+	BaseURL string
 }
+
+// NewClaude builds a Claude provider over src.
+func NewClaude(src ClaudeSource) Provider {
+	return Provider{
+		ID:          "claude",
+		DisplayName: "Claude",
+		CategoryIDs: []string{"five_hour", "seven_day", "seven_day_opus"},
+		Probe:       nil, // always attempted
+		Fetch:       func() (*FetchResult, bool, error) { return fetchClaude(src) },
+		Demo:        demoClaude,
+	}
+}
+
+// Claude is the provider for the local Claude Code login.
+var Claude = NewClaude(ClaudeSource{})
 
 // claude-specific constants
 
@@ -235,6 +256,45 @@ func claudeKeychainToken(account string) (string, error) {
 	return token, nil
 }
 
+// --- login identity ---
+
+// ClaudeLoginEmail returns the email of the account Claude Code is logged in
+// as, from oauthAccount.emailAddress in its .claude.json. It returns "" when
+// that is unknown, and when CLAUDE_CODE_OAUTH_TOKEN is set, since the token in
+// the environment then wins the credential chain and may belong to anyone.
+func ClaudeLoginEmail() string {
+	if os.Getenv("CLAUDE_CODE_OAUTH_TOKEN") != "" {
+		return ""
+	}
+
+	// Claude Code keeps .claude.json inside CLAUDE_CONFIG_DIR when that is set,
+	// and in the home directory, beside ~/.claude, when it is not.
+	var path string
+	if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
+		path = filepath.Join(dir, ".claude.json")
+	} else {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		path = filepath.Join(home, ".claude.json")
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	var cfg struct {
+		OAuthAccount struct {
+			EmailAddress string `json:"emailAddress"`
+		} `json:"oauthAccount"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(cfg.OAuthAccount.EmailAddress)
+}
+
 // --- fetch + parse ---
 
 // titleCase replaces underscores with spaces and title-cases each word.
@@ -251,33 +311,46 @@ func titleCase(s string) string {
 	return strings.Join(words, " ")
 }
 
-func fetchClaude() (*FetchResult, bool, error) {
-	token, err := claudeGetAccessToken()
-	if err != nil {
-		return nil, true, fmt.Errorf("%s", humanizeError("Claude", err))
+func fetchClaude(src ClaudeSource) (*FetchResult, bool, error) {
+	getToken := src.Token
+	if getToken == nil {
+		getToken = claudeGetAccessToken
+	}
+	client := src.Client
+	if client == nil {
+		client = &http.Client{Timeout: claudeHTTPTimeout}
+	}
+	baseURL := src.BaseURL
+	if baseURL == "" {
+		baseURL = claudeDefaultBaseURL
 	}
 
-	data, err := fetchClaudeAPI(token)
+	token, err := getToken()
+	if err != nil {
+		return nil, true, humanize("Claude", err)
+	}
+
+	data, err := fetchClaudeAPI(client, baseURL, token)
 	if err != nil {
 		isAuth := strings.Contains(err.Error(), "expired") || strings.Contains(err.Error(), "authenticate")
-		return nil, isAuth, fmt.Errorf("%s", humanizeError("Claude", err))
+		return nil, isAuth, humanize("Claude", err)
 	}
 
 	cats, extra := parseClaude(data)
-	return &FetchResult{Categories: cats, Extra: extra}, false, nil
+	return &FetchResult{Categories: cats, Extra: extra, Credits: parseClaudeCredits(data)}, false, nil
 }
 
 // fetchClaudeAPI retrieves usage data from the Claude API using the provided
-// OAuth token.
-func fetchClaudeAPI(token string) (map[string]any, error) {
-	client := &http.Client{Timeout: 10 * time.Second}
-
-	req, err := http.NewRequest(http.MethodGet, "https://api.anthropic.com/api/oauth/usage", nil)
+// OAuth token. Anthropic rate-limits this endpoint per token, so any failure
+// that names a Retry-After comes back as a *RetryAfterError for the caller to
+// honor.
+func fetchClaudeAPI(client *http.Client, baseURL, token string) (map[string]any, error) {
+	req, err := http.NewRequest(http.MethodGet, strings.TrimRight(baseURL, "/")+claudeUsagePath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("Network error: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("anthropic-beta", "oauth-2025-04-20")
+	req.Header.Set("anthropic-beta", claudeOAuthBeta)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -285,11 +358,17 @@ func fetchClaudeAPI(token string) (map[string]any, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return nil, fmt.Errorf("Token expired - run 'claude' to re-authenticate")
-	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API error: %s", resp.Status)
+		var statusErr error
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			statusErr = fmt.Errorf("Token expired - run 'claude' to re-authenticate")
+		} else {
+			statusErr = &HTTPStatusError{Code: resp.StatusCode, Status: resp.Status}
+		}
+		if wait, ok := parseRetryAfter(resp.Header.Get("Retry-After"), time.Now()); ok {
+			return nil, &RetryAfterError{Wait: wait, Err: statusErr}
+		}
+		return nil, statusErr
 	}
 
 	var data map[string]any
@@ -364,19 +443,144 @@ func claudeCategory(key string, entry map[string]any) (parse.Category, bool) {
 	}, true
 }
 
+// claudeIsCredit reports whether a usage block is a dollar credit rather than
+// a quota window. iguana_necktie, the Claude Code cloud-session grant, arrives
+// shaped like a meter, with utilization and resets_at, but its resets_at is
+// when the grant expires and its utilization is dollars spent, so pacing it
+// against a window would be meaningless.
+func claudeIsCredit(entry map[string]any) bool {
+	v, ok := entry["limit_dollars"]
+	return ok && v != nil
+}
+
+// claudeCreditNames names the credits Anthropic publishes under code names.
+// An unmapped credit keeps its raw key rather than a title-cased guess, which
+// would read like a real product name.
+var claudeCreditNames = map[string]string{
+	"iguana_necktie": "Cloud sessions",
+}
+
+// parseClaudeCredits returns every top-level block that carries a dollar
+// limit, sorted by key.
+func parseClaudeCredits(data map[string]any) []parse.Credit {
+	keys := make([]string, 0, len(data))
+	for key := range data {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	var credits []parse.Credit
+	for _, key := range keys {
+		entry, ok := data[key].(map[string]any)
+		if !ok || !claudeIsCredit(entry) {
+			continue
+		}
+		limit, _ := parse.AsFloat64(entry["limit_dollars"])
+		used, _ := parse.AsFloat64(entry["used_dollars"])
+		remaining, ok := parse.AsFloat64(entry["remaining_dollars"])
+		if !ok {
+			remaining = max(limit-used, 0)
+		}
+		expiresAt, _ := parse.AsString(entry["resets_at"])
+		name, ok := claudeCreditNames[key]
+		if !ok {
+			name = key
+		}
+		credits = append(credits, parse.Credit{
+			Key:              key,
+			Name:             name,
+			LimitDollars:     limit,
+			UsedDollars:      used,
+			RemainingDollars: remaining,
+			ExpiresAt:        expiresAt,
+		})
+	}
+	return credits
+}
+
+// claudeSlug turns a display name into a key fragment: lowercase, with each
+// run of other characters collapsed to one underscore.
+func claudeSlug(name string) string {
+	var b strings.Builder
+	underscore := false
+	for _, r := range strings.ToLower(name) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			underscore = false
+			continue
+		}
+		if !underscore && b.Len() > 0 {
+			b.WriteByte('_')
+			underscore = true
+		}
+	}
+	return strings.TrimSuffix(b.String(), "_")
+}
+
+// claudeScopedLimits reads the per-model weekly limits that the usage API
+// publishes only in limits[], such as Fable. The session and weekly_all
+// entries there repeat five_hour and seven_day and are left to them. A name
+// that is already taken is skipped: the exporter labels series by name, and
+// two bars with one name would collide.
+func claudeScopedLimits(data map[string]any, takenNames, takenKeys map[string]bool) []parse.Category {
+	list, _ := data["limits"].([]any)
+
+	var categories []parse.Category
+	for _, raw := range list {
+		entry, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if kind, _ := parse.AsString(entry["kind"]); kind != "weekly_scoped" {
+			continue
+		}
+		scope, _ := entry["scope"].(map[string]any)
+		model, _ := scope["model"].(map[string]any)
+		name, _ := parse.AsString(model["display_name"])
+		name = strings.TrimSpace(name)
+		slug := claudeSlug(name)
+		if slug == "" {
+			continue
+		}
+		key := "weekly_scoped_" + slug
+		if takenNames[strings.ToLower(name)] || takenKeys[key] {
+			continue
+		}
+		takenNames[strings.ToLower(name)] = true
+		takenKeys[key] = true
+
+		// These are quota by declaration, not inferred from shape, so a window
+		// that has not started (no reset time yet) still shows, unpaced.
+		percent, _ := parse.AsFloat64(entry["percent"])
+		resetsAt, _ := parse.AsString(entry["resets_at"])
+		categories = append(categories, parse.Category{
+			Key:           key,
+			Name:          name,
+			Utilization:   percent,
+			ResetsAt:      resetsAt,
+			WindowSeconds: 7 * 24 * 3600,
+		})
+	}
+	return categories
+}
+
 // parseClaude parses the raw Claude usage API response into categories and
 // optional extra usage.
 func parseClaude(data map[string]any) ([]parse.Category, *parse.ExtraUsage) {
 	var categories []parse.Category
 	seen := make(map[string]bool)
+	takenNames := make(map[string]bool)
+	takenKeys := make(map[string]bool)
 
 	add := func(key string) {
 		entry, ok := data[key].(map[string]any)
-		if !ok {
+		if !ok || claudeIsCredit(entry) {
 			return
 		}
 		if category, ok := claudeCategory(key, entry); ok {
 			categories = append(categories, category)
+			takenNames[strings.ToLower(category.Name)] = true
+			takenKeys[category.Key] = true
 		}
 	}
 
@@ -403,6 +607,8 @@ func parseClaude(data map[string]any) ([]parse.Category, *parse.ExtraUsage) {
 	for _, key := range rest {
 		add(key)
 	}
+
+	categories = append(categories, claudeScopedLimits(data, takenNames, takenKeys)...)
 
 	// Parse extra_usage block.
 	var extra *parse.ExtraUsage

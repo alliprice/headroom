@@ -172,3 +172,23 @@ func TestAntigravityCommandPathFallsBackToLocalBin(t *testing.T) {
 		t.Fatal("antigravityCommandPath returned an empty path")
 	}
 }
+
+// An untouched bucket's reset_time is now plus the window, not the end of a
+// running window, so it must not be paced against.
+func TestParseAntigravityUnusedBucketHasNoResetTime(t *testing.T) {
+	categories, err := parseAntigravity([]byte(antigravityReportJSON))
+	if err != nil {
+		t.Fatalf("parseAntigravity returned error: %v", err)
+	}
+	for _, c := range categories[2:] { // the two 3p buckets, remaining_fraction 1
+		if c.ResetsAt != "" {
+			t.Errorf("%s ResetsAt = %q, want empty for an unused bucket", c.Name, c.ResetsAt)
+		}
+		if c.Utilization != 0 || c.WindowSeconds == 0 {
+			t.Errorf("%s = %#v, want zero usage over a known window", c.Name, c)
+		}
+	}
+	if categories[1].ResetsAt != "2026-09-26T17:00:01Z" {
+		t.Errorf("a used bucket lost its reset time: %#v", categories[1])
+	}
+}

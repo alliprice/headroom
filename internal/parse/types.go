@@ -16,6 +16,17 @@ type ExtraUsage struct {
 	Utilization  float64 // percentage 0-100
 }
 
+// Credit is a fixed dollar allowance, such as a promotional grant, that is
+// spent down once rather than refilled each window.
+type Credit struct {
+	Key              string
+	Name             string
+	LimitDollars     float64
+	UsedDollars      float64
+	RemainingDollars float64
+	ExpiresAt        string // ISO 8601 timestamp, "" if unknown
+}
+
 // Refresh intervals in seconds
 const (
 	RefreshFocused     = 30 * 60

@@ -8,6 +8,8 @@ require (
 	charm.land/lipgloss/v2 v2.0.0
 	github.com/lucasb-eyer/go-colorful v1.3.0
 	github.com/prometheus/client_golang v1.23.2
+	github.com/prometheus/client_model v0.6.2
+	github.com/prometheus/common v0.66.1
 	go.yaml.in/yaml/v2 v2.4.2
 )
 
@@ -26,8 +28,6 @@ require (
 	github.com/mattn/go-runewidth v0.0.20 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/prometheus/client_model v0.6.2 // indirect
-	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect

@@ -113,7 +113,7 @@ func probeAntigravity() bool {
 func fetchAntigravity() (*FetchResult, bool, error) {
 	command, err := antigravityCommandPath()
 	if err != nil {
-		return nil, false, fmt.Errorf("%s", humanizeError("Antigravity", err))
+		return nil, false, humanize("Antigravity", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), antigravityFetchTimeout)
@@ -135,7 +135,7 @@ func fetchAntigravity() (*FetchResult, bool, error) {
 			message = err.Error()
 		}
 		isAuth := antigravityAuthError(message)
-		return nil, isAuth, fmt.Errorf("%s", humanizeError("Antigravity", errors.New(message)))
+		return nil, isAuth, humanize("Antigravity", errors.New(message))
 	}
 
 	categories, err := parseAntigravity(output)
@@ -192,11 +192,20 @@ func parseAntigravity(data []byte) ([]parse.Category, error) {
 			utilization = 100
 		}
 
+		// An untouched bucket has no window running yet, but the CLI still
+		// reports a reset of now plus the window. Pacing against that reads as
+		// a fresh window with zero used, so leave the reset out and the bar
+		// unpaced until usage starts the clock.
+		resetsAt := bucket.ResetTime
+		if bucket.RemainingFraction >= 1 {
+			resetsAt = ""
+		}
+
 		categories = append(categories, parse.Category{
 			Key:           display.key,
 			Name:          display.name,
 			Utilization:   utilization,
-			ResetsAt:      bucket.ResetTime,
+			ResetsAt:      resetsAt,
 			WindowSeconds: antigravityWindowSeconds[bucket.Window],
 		})
 	}

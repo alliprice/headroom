@@ -2,11 +2,14 @@ package provider
 
 import (
 	"bufio"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -24,15 +27,74 @@ var Codex = Provider{
 	Demo:        demoCodex,
 }
 
+// Each app-server call is a real upstream rate-limit read, so the probe only
+// looks for the binary. It used to run the whole RPC and throw the answer
+// away, which doubled the calls against the account.
 func probeCodex() bool {
-	data, _ := fetchCodexRPC()
-	return data != nil
+	_, err := exec.LookPath("codex")
+	return err == nil
+}
+
+const (
+	codexInitTimeout = 10 * time.Second
+	// The rateLimits read goes upstream to chatgpt.com, which can be slower
+	// than the local initialize handshake.
+	codexRateLimitsTimeout = 30 * time.Second
+)
+
+// CodexLoginEmail returns the email of the account the Codex CLI is logged in
+// as, from the email claim of tokens.id_token in $CODEX_HOME/auth.json
+// (default ~/.codex/auth.json). The JWT payload is read without verifying its
+// signature: this names the account for a label, and trusts nothing to it.
+// It returns "" when the file, the token or the claim is missing.
+func CodexLoginEmail() string {
+	dir := os.Getenv("CODEX_HOME")
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		dir = filepath.Join(home, ".codex")
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "auth.json"))
+	if err != nil {
+		return ""
+	}
+	var auth struct {
+		Tokens struct {
+			IDToken string `json:"id_token"`
+		} `json:"tokens"`
+	}
+	if err := json.Unmarshal(data, &auth); err != nil {
+		return ""
+	}
+	return jwtEmail(auth.Tokens.IDToken)
+}
+
+// jwtEmail decodes the payload segment of a JWT and returns its email claim.
+func jwtEmail(token string) string {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return ""
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(parts[1], "="))
+	if err != nil {
+		return ""
+	}
+	var claims struct {
+		Email string `json:"email"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(claims.Email)
 }
 
 func fetchCodex() (*FetchResult, bool, error) {
 	data, err := fetchCodexRPC()
 	if err != nil {
-		return nil, false, fmt.Errorf("%s", humanizeError("Codex", err))
+		return nil, false, humanize("Codex", err)
 	}
 	if data == nil {
 		return &FetchResult{}, false, nil
@@ -102,7 +164,7 @@ func fetchCodexRPC() (map[string]any, error) {
 	if _, err := fmt.Fprintf(stdin, "%s\n", initMsg); err != nil {
 		return nil, fmt.Errorf("Codex error: %w", err)
 	}
-	if _, err := scanCodexRPCResponse(scanner, "1", 10*time.Second); err != nil {
+	if _, err := scanCodexRPCResponse(scanner, "1", codexInitTimeout); err != nil {
 		return nil, fmt.Errorf("No init response from codex app-server")
 	}
 
@@ -110,7 +172,7 @@ func fetchCodexRPC() (map[string]any, error) {
 	if _, err := fmt.Fprintf(stdin, "%s\n", limitsMsg); err != nil {
 		return nil, fmt.Errorf("Codex error: %w", err)
 	}
-	data, err := scanCodexRPCResponse(scanner, "2", 10*time.Second)
+	data, err := scanCodexRPCResponse(scanner, "2", codexRateLimitsTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("Codex app-server timed out on rateLimits")
 	}

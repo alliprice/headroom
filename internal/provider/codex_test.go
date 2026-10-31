@@ -2,7 +2,9 @@ package provider
 
 import (
 	"bufio"
+	"encoding/base64"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -117,5 +119,91 @@ func TestParseCodexIncludesModelSpecificLimits(t *testing.T) {
 	}
 	if categories[2].Name != "GPT-5.3-Codex-Spark Weekly" {
 		t.Errorf("model-specific secondary name = %q", categories[2].Name)
+	}
+}
+
+// The probe must not start the app-server: every run is an upstream
+// rate-limit read, and the probe used to throw its answer away.
+func TestProbeCodexDoesNotRunBinary(t *testing.T) {
+	bin := t.TempDir()
+	marker := filepath.Join(t.TempDir(), "ran")
+	script := "#!/bin/sh\ntouch '" + marker + "'\n"
+	if err := os.WriteFile(filepath.Join(bin, "codex"), []byte(script), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+
+	if !probeCodex() {
+		t.Fatal("probeCodex = false with codex on PATH")
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("probeCodex ran the codex binary")
+	}
+}
+
+func TestProbeCodexMissingBinary(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	if probeCodex() {
+		t.Fatal("probeCodex = true with no codex on PATH")
+	}
+}
+
+func codexIDToken(payload string) string {
+	enc := base64.RawURLEncoding.EncodeToString
+	return enc([]byte(`{"alg":"RS256"}`)) + "." + enc([]byte(payload)) + ".c2lnbmF0dXJl"
+}
+
+func writeCodexAuth(t *testing.T, dir, idToken string) {
+	t.Helper()
+	contents := `{"auth_mode":"chatgpt","tokens":{"id_token":"` + idToken + `","access_token":"at","refresh_token":"rt"}}`
+	if err := os.WriteFile(filepath.Join(dir, "auth.json"), []byte(contents), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCodexLoginEmailFromCodexHome(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CODEX_HOME", dir)
+	writeCodexAuth(t, dir, codexIDToken(`{"email":"dprice@gmail.com","sub":"x"}`))
+	if got := CodexLoginEmail(); got != "dprice@gmail.com" {
+		t.Fatalf("CodexLoginEmail = %q", got)
+	}
+}
+
+func TestCodexLoginEmailDefaultsToHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CODEX_HOME", "")
+	t.Setenv("HOME", home)
+	if err := os.Mkdir(filepath.Join(home, ".codex"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	writeCodexAuth(t, filepath.Join(home, ".codex"), codexIDToken(`{"email":"alli@sibilance.io"}`))
+	if got := CodexLoginEmail(); got != "alli@sibilance.io" {
+		t.Fatalf("CodexLoginEmail = %q", got)
+	}
+}
+
+func TestCodexLoginEmailUnknown(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		idToken string // "-" means no auth.json
+	}{
+		{"missing file", "-"},
+		{"no id token", ""},
+		{"not a JWT", "opaque"},
+		{"bad base64", "a.!!!.c"},
+		{"no email claim", codexIDToken(`{"sub":"x"}`)},
+		{"payload not JSON", codexIDToken(`nope`)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			t.Setenv("CODEX_HOME", dir)
+			if tt.idToken != "-" {
+				writeCodexAuth(t, dir, tt.idToken)
+			}
+			if got := CodexLoginEmail(); got != "" {
+				t.Fatalf("CodexLoginEmail = %q, want empty", got)
+			}
+		})
 	}
 }

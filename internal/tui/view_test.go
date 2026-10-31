@@ -328,3 +328,26 @@ func TestCompaction_ZeroCategories(t *testing.T) {
 		t.Errorf("n=0 should allow titles and spacing (0 cost), got %+v", c)
 	}
 }
+
+// An unstarted window (Antigravity reports no reset time for an untouched
+// bucket) renders its bar with no reset text and no glide marker, rather than
+// panicking or printing a stale time.
+func TestView_EmptyResetTime(t *testing.T) {
+	freezeTimeAndTZ(t)
+
+	cats := []parse.Category{{
+		Key:           "antigravity_3p_5h",
+		Name:          "Claude/GPT Session",
+		Utilization:   0,
+		ResetsAt:      "",
+		WindowSeconds: 5 * 3600,
+	}}
+	m := buildTestModel(120, 40, stateRunning, cats, nil)
+	out := viewString(m)
+	if !strings.Contains(out, "Claude/GPT Session") {
+		t.Fatal("bar with an empty reset time did not render")
+	}
+	if strings.Contains(out, "Resets") {
+		t.Error("bar with an empty reset time printed a reset")
+	}
+}
