@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os/exec"
+	"sort"
 	"strings"
 	"time"
 
@@ -95,48 +96,67 @@ func fetchCodexRPC() (map[string]any, error) {
 
 	scanner := bufio.NewScanner(stdout)
 
-	// Send initialize request and read the response.
+	// Send initialize request and read its response. The app-server may emit
+	// notifications at any point, so match responses by JSON-RPC id instead of
+	// assuming the next line belongs to the request we just sent.
 	if _, err := fmt.Fprintf(stdin, "%s\n", initMsg); err != nil {
 		return nil, fmt.Errorf("Codex error: %w", err)
 	}
-	if !scanner.Scan() {
-		return nil, fmt.Errorf("No init response from codex app-server")
-	}
-	if strings.TrimSpace(scanner.Text()) == "" {
+	if _, err := scanCodexRPCResponse(scanner, "1", 10*time.Second); err != nil {
 		return nil, fmt.Errorf("No init response from codex app-server")
 	}
 
-	// Send rateLimits request and read the response with a timeout.
+	// Send rateLimits request and read the matching response with a timeout.
 	if _, err := fmt.Fprintf(stdin, "%s\n", limitsMsg); err != nil {
 		return nil, fmt.Errorf("Codex error: %w", err)
 	}
-
-	type scanResult struct {
-		line string
-		ok   bool
-	}
-	ch := make(chan scanResult, 1)
-	go func() {
-		ok := scanner.Scan()
-		ch <- scanResult{line: scanner.Text(), ok: ok}
-	}()
-
-	var resultLine string
-	select {
-	case res := <-ch:
-		if !res.ok || strings.TrimSpace(res.line) == "" {
-			return nil, fmt.Errorf("Codex app-server timed out on rateLimits")
-		}
-		resultLine = res.line
-	case <-time.After(10 * time.Second):
+	data, err := scanCodexRPCResponse(scanner, "2", 10*time.Second)
+	if err != nil {
 		return nil, fmt.Errorf("Codex app-server timed out on rateLimits")
 	}
-
-	var data map[string]any
-	if err := json.Unmarshal([]byte(resultLine), &data); err != nil {
-		return nil, fmt.Errorf("Failed to parse Codex response")
-	}
 	return data, nil
+}
+
+// scanCodexRPCResponse skips app-server notifications and unrelated responses
+// until it finds the JSON-RPC response with expectedID.
+func scanCodexRPCResponse(scanner *bufio.Scanner, expectedID string, timeout time.Duration) (map[string]any, error) {
+	type scanResult struct {
+		data map[string]any
+		err  error
+	}
+
+	ch := make(chan scanResult, 1)
+	go func() {
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" {
+				continue
+			}
+
+			var data map[string]any
+			if err := json.Unmarshal([]byte(line), &data); err != nil {
+				continue
+			}
+			if fmt.Sprint(data["id"]) != expectedID {
+				continue
+			}
+			ch <- scanResult{data: data}
+			return
+		}
+
+		err := scanner.Err()
+		if err == nil {
+			err = errors.New("Codex app-server closed before sending a response")
+		}
+		ch <- scanResult{err: err}
+	}()
+
+	select {
+	case result := <-ch:
+		return result.data, result.err
+	case <-time.After(timeout):
+		return nil, errors.New("Codex app-server response timed out")
+	}
 }
 
 // parseCodex parses the raw Codex usage API response into categories.
@@ -145,19 +165,48 @@ func parseCodex(data map[string]any) []parse.Category {
 
 	result, _ := data["result"].(map[string]any)
 	rateLimits, _ := result["rateLimits"].(map[string]any)
+	categories = append(categories, parseCodexLimit(rateLimits, "codex", "")...)
 
+	// Newer app-server versions expose additional model-specific limits here.
+	// The top-level rateLimits object duplicates the ordinary "codex" entry, so
+	// skip that id and add only genuinely separate limits.
+	limitsByID, _ := result["rateLimitsByLimitId"].(map[string]any)
+	mainLimitID, _ := rateLimits["limitId"].(string)
+	limitIDs := make([]string, 0, len(limitsByID))
+	for limitID := range limitsByID {
+		if limitID != mainLimitID {
+			limitIDs = append(limitIDs, limitID)
+		}
+	}
+	sort.Strings(limitIDs)
+
+	for _, limitID := range limitIDs {
+		limit, ok := limitsByID[limitID].(map[string]any)
+		if !ok {
+			continue
+		}
+		limitName, _ := limit["limitName"].(string)
+		if limitName == "" {
+			limitName = limitID
+		}
+		categories = append(categories, parseCodexLimit(limit, limitID, limitName)...)
+	}
+
+	return categories
+}
+
+func parseCodexLimit(rateLimits map[string]any, keyPrefix, namePrefix string) []parse.Category {
 	type mapping struct {
 		rpcKey         string
-		catKey         string
-		name           string
+		defaultName    string
 		defaultWinMins int
 	}
-
 	mappings := []mapping{
-		{"primary", "codex_primary", "Session", 300},
-		{"secondary", "codex_secondary", "Weekly", 10080},
+		{rpcKey: "primary", defaultName: "Session", defaultWinMins: 300},
+		{rpcKey: "secondary", defaultName: "Weekly", defaultWinMins: 10080},
 	}
 
+	var categories []parse.Category
 	for _, m := range mappings {
 		raw, ok := rateLimits[m.rpcKey]
 		if !ok {
@@ -172,6 +221,11 @@ func parseCodex(data map[string]any) []parse.Category {
 		if wm, ok := entry["windowDurationMins"].(float64); ok {
 			windowMins = int(wm)
 		}
+		windowName := codexWindowName(windowMins, m.defaultName)
+		categoryName := windowName
+		if namePrefix != "" {
+			categoryName = namePrefix + " " + windowName
+		}
 
 		var resetsISO string
 		if resetsUnix, ok := entry["resetsAt"].(float64); ok && resetsUnix != 0 {
@@ -182,8 +236,8 @@ func parseCodex(data map[string]any) []parse.Category {
 		utilization, _ := parse.AsFloat64(entry["usedPercent"])
 
 		categories = append(categories, parse.Category{
-			Key:           m.catKey,
-			Name:          m.name,
+			Key:           keyPrefix + "_" + m.rpcKey,
+			Name:          categoryName,
 			Utilization:   utilization,
 			ResetsAt:      resetsISO,
 			WindowSeconds: windowMins * 60,
@@ -191,6 +245,17 @@ func parseCodex(data map[string]any) []parse.Category {
 	}
 
 	return categories
+}
+
+func codexWindowName(windowMins int, fallback string) string {
+	switch windowMins {
+	case 300:
+		return "Session"
+	case 10080:
+		return "Weekly"
+	default:
+		return fallback
+	}
 }
 
 func demoCodex() *FetchResult {

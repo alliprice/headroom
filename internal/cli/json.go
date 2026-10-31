@@ -32,9 +32,15 @@ func RunJSON() error {
 		Status       string  `json:"status"`
 	}
 
+	type failureEntry struct {
+		Provider string `json:"provider"`
+		Message  string `json:"message"`
+	}
+
 	type output struct {
 		Categories []categoryEntry `json:"categories"`
 		ExtraUsage *extraEntry     `json:"extra_usage,omitempty"`
+		Failures   []failureEntry  `json:"failures,omitempty"`
 	}
 
 	out := output{
@@ -61,6 +67,10 @@ func RunJSON() error {
 			LimitDollars: round2(hr.Extra.LimitDollars),
 			Status:       hr.Extra.Status,
 		}
+	}
+
+	for _, f := range hr.Failures {
+		out.Failures = append(out.Failures, failureEntry{Provider: f.Provider, Message: f.Message})
 	}
 
 	encoded, err := json.MarshalIndent(out, "", "  ")

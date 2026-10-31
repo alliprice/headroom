@@ -20,9 +20,9 @@ func TestHumanizeError(t *testing.T) {
 		},
 		{
 			name:        "deadline exceeded",
-			displayName: "Gemini",
+			displayName: "Antigravity",
 			err:         errors.New("context deadline exceeded"),
-			want:        "Gemini: timed out - will retry",
+			want:        "Antigravity: timed out - will retry",
 		},
 		{
 			name:        "no such host",
@@ -44,9 +44,9 @@ func TestHumanizeError(t *testing.T) {
 		},
 		{
 			name:        "TLS error",
-			displayName: "Gemini",
+			displayName: "Antigravity",
 			err:         errors.New("TLS handshake failed"),
-			want:        "Gemini: TLS error - check network",
+			want:        "Antigravity: TLS error - check network",
 		},
 		{
 			name:        "certificate error",
@@ -74,7 +74,7 @@ func TestHumanizeError(t *testing.T) {
 		},
 		{
 			name:        "authenticate required",
-			displayName: "Gemini",
+			displayName: "Antigravity",
 			err:         errors.New("please authenticate to continue"),
 			want:        "please authenticate to continue",
 		},
@@ -92,9 +92,9 @@ func TestHumanizeError(t *testing.T) {
 		},
 		{
 			name:        "server error 500",
-			displayName: "Gemini",
+			displayName: "Antigravity",
 			err:         errors.New("HTTP 500: internal server error"),
-			want:        "Gemini: server error - will retry",
+			want:        "Antigravity: server error - will retry",
 		},
 		{
 			name:        "server error 502",
@@ -110,9 +110,9 @@ func TestHumanizeError(t *testing.T) {
 		},
 		{
 			name:        "server error 504",
-			displayName: "Gemini",
+			displayName: "Antigravity",
 			err:         errors.New("504 Gateway Timeout"),
-			want:        "Gemini: server error - will retry",
+			want:        "Antigravity: server error - will retry",
 		},
 		{
 			name:        "short generic error",
@@ -122,9 +122,9 @@ func TestHumanizeError(t *testing.T) {
 		},
 		{
 			name:        "long error truncated",
-			displayName: "Gemini",
+			displayName: "Antigravity",
 			err:         errors.New("this is a very long error message that exceeds sixty characters and should be truncated"),
-			want:        "Gemini: this is a very long error message that exceeds sixty char...",
+			want:        "Antigravity: this is a very long error message that exceeds sixty char...",
 		},
 	}
 

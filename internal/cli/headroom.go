@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"fmt"
 	"math"
+	"strings"
 
 	"github.com/alliprice/headroom/internal/parse"
 	"github.com/alliprice/headroom/internal/provider"
@@ -27,10 +29,30 @@ type HeadroomExtra struct {
 	Status       string // "on track" | "warning"
 }
 
+// HeadroomFailure records a provider that could not be reached, so one dead
+// provider is reported rather than hiding every healthy one.
+type HeadroomFailure struct {
+	Provider string
+	Message  string
+}
+
 // HeadroomResult is the output of fetchHeadroom.
 type HeadroomResult struct {
 	Categories []HeadroomCategory
 	Extra      *HeadroomExtra
+	Failures   []HeadroomFailure
+}
+
+// failureMessage collapses a provider error onto one line and drops the
+// provider name the error already carries, since the caller prints it. Some
+// CLIs hand back a whole JSON document as their error text.
+func failureMessage(displayName, msg string, limit int) string {
+	msg = strings.Join(strings.Fields(msg), " ")
+	msg = strings.TrimPrefix(msg, displayName+": ")
+	if limit > 0 && len(msg) > limit {
+		msg = strings.TrimSpace(msg[:limit-3]) + "..."
+	}
+	return msg
 }
 
 // fetchHeadroom probes all providers, fetches usage data, and computes
@@ -44,17 +66,26 @@ func fetchHeadroom() (*HeadroomResult, error) {
 		}
 	}
 
-	// Fetch
+	// Fetch. A provider that fails is recorded and skipped: some credentials
+	// cannot be refreshed without a person, and one of those going stale must
+	// not take the healthy providers down with it.
 	var allCats []parse.Category
 	var extra *parse.ExtraUsage
+	var failures []HeadroomFailure
 	providerCount := 0
+	attempted := 0
 	for _, p := range provider.All {
 		if !available[p.ID] {
 			continue
 		}
+		attempted++
 		res, _, err := p.Fetch()
 		if err != nil {
-			return nil, err
+			failures = append(failures, HeadroomFailure{
+				Provider: p.DisplayName,
+				Message:  failureMessage(p.DisplayName, err.Error(), 200),
+			})
+			continue
 		}
 		if res == nil {
 			continue
@@ -66,6 +97,13 @@ func fetchHeadroom() (*HeadroomResult, error) {
 		}
 	}
 
+	// Only a total blackout is an error. Anything less still has something
+	// worth printing.
+	if providerCount == 0 && attempted > 0 && len(failures) == attempted {
+		return nil, fmt.Errorf("every provider failed; first: %s: %s",
+			failures[0].Provider, failures[0].Message)
+	}
+
 	// Prefix names when multiple providers present.
 	if providerCount > 1 {
 		allCats = prefixCategoryNames(allCats)
@@ -74,6 +112,7 @@ func fetchHeadroom() (*HeadroomResult, error) {
 	// Compute per-category headroom.
 	result := &HeadroomResult{
 		Categories: make([]HeadroomCategory, 0, len(allCats)),
+		Failures:   failures,
 	}
 	for _, cat := range allCats {
 		usagePct := cat.Utilization
@@ -141,12 +180,22 @@ func round2(f float64) float64 {
 
 // prefixCategoryNames adds provider prefixes to category names when multiple
 // providers are present (e.g. "Session" -> "Claude session").
+//
+// Only a bare window name is lowercased. A name that already qualifies itself
+// with a model group ("Gemini Session") keeps its own capitalisation, so it
+// reads as "Antigravity Gemini Session" rather than "Antigravity gemini
+// Session".
 func prefixCategoryNames(cats []parse.Category) []parse.Category {
 	for i := range cats {
 		p := providerForKey(cats[i].Key)
-		if p != nil {
-			cats[i].Name = p.DisplayName + " " + lowercaseFirst(cats[i].Name)
+		if p == nil {
+			continue
 		}
+		name := cats[i].Name
+		if !strings.Contains(name, " ") {
+			name = lowercaseFirst(name)
+		}
+		cats[i].Name = p.DisplayName + " " + name
 	}
 	return cats
 }

@@ -436,7 +436,7 @@ func (m Model) groupCatsByProvider() map[string][]string {
 	for _, c := range m.categories {
 		pid, ok := keyToProvider[c.Key]
 		if !ok {
-			// Prefix-based fallback: "gemini_foo" routes to the "gemini" provider.
+			// Prefix-based fallback: "codex_foo" routes to the "codex" provider.
 			for _, p := range provider.All {
 				if strings.HasPrefix(c.Key, p.ID+"_") {
 					pid = p.ID

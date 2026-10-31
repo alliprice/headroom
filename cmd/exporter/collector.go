@@ -78,7 +78,12 @@ var (
 	)
 	descScrapeSuccess = prometheus.NewDesc(
 		"llm_scrape_success",
-		"Whether the last provider fetch succeeded (1=yes, 0=no)",
+		"Whether the latest completed provider acquisition attempt succeeded (1=yes, 0=no)",
+		[]string{"provider"}, nil,
+	)
+	descScrapeFresh = prometheus.NewDesc(
+		"llm_scrape_fresh",
+		"Whether cached provider data is within its maximum age (1=yes, 0=no)",
 		[]string{"provider"}, nil,
 	)
 	descScrapeTimestamp = prometheus.NewDesc(
@@ -93,7 +98,7 @@ var (
 		descSleepRecovery, descAdjustedHeadroom,
 		descResetTimestamp, descWindowSeconds,
 		descExtraUtilization, descExtraGlide, descExtraUsed, descExtraLimit,
-		descScrapeSuccess, descScrapeTimestamp,
+		descScrapeSuccess, descScrapeFresh, descScrapeTimestamp,
 	}
 )
 
@@ -101,6 +106,7 @@ var (
 type providerState struct {
 	prov     provider.Provider
 	interval time.Duration
+	maxAge   time.Duration
 
 	mu          sync.RWMutex
 	lastResult  *provider.FetchResult
@@ -119,6 +125,9 @@ func (s *providerState) run() {
 func (s *providerState) fetch() {
 	available := s.prov.Probe == nil || s.prov.Probe()
 	if !available {
+		s.mu.Lock()
+		s.lastSuccess = false
+		s.mu.Unlock()
 		log.Printf("[%s] provider not available, skipping", s.prov.ID)
 		return
 	}
@@ -146,11 +155,19 @@ func (s *providerState) fetch() {
 	log.Printf("[%s] fetched %d categories%s", s.prov.ID, n, extra)
 }
 
+func (s *providerState) fresh(now time.Time) bool {
+	if s.lastResult == nil || s.lastFetch.IsZero() || s.maxAge <= 0 {
+		return false
+	}
+	return now.Sub(s.lastFetch) <= s.maxAge
+}
+
 func (s *providerState) collect(ch chan<- prometheus.Metric) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	pid := s.prov.ID
+	fresh := s.fresh(time.Now())
 
 	success := 0.0
 	if s.lastSuccess {
@@ -158,11 +175,17 @@ func (s *providerState) collect(ch chan<- prometheus.Metric) {
 	}
 	ch <- prometheus.MustNewConstMetric(descScrapeSuccess, prometheus.GaugeValue, success, pid)
 
-	if !s.lastFetch.IsZero() && s.lastSuccess {
+	freshness := 0.0
+	if fresh {
+		freshness = 1.0
+	}
+	ch <- prometheus.MustNewConstMetric(descScrapeFresh, prometheus.GaugeValue, freshness, pid)
+
+	if !s.lastFetch.IsZero() {
 		ch <- prometheus.MustNewConstMetric(descScrapeTimestamp, prometheus.GaugeValue, float64(s.lastFetch.Unix()), pid)
 	}
 
-	if s.lastResult == nil {
+	if !fresh {
 		return
 	}
 
@@ -208,10 +231,11 @@ func newMultiCollector() *multiCollector {
 	return &multiCollector{}
 }
 
-func (mc *multiCollector) add(p provider.Provider, interval time.Duration) {
+func (mc *multiCollector) add(p provider.Provider, interval, maxAge time.Duration) {
 	mc.providers = append(mc.providers, &providerState{
 		prov:     p,
 		interval: interval,
+		maxAge:   maxAge,
 	})
 }
 
