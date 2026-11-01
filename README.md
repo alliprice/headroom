@@ -76,9 +76,19 @@ cliproxy:               # read accounts held by CLIProxyAPI; empty url turns it 
   key_service: cliproxyapi-management   # keychain item with the management key
   relist: 5m                            # how often to re-read its credentials
   max_age: 6h                           # oldest recorded quota still shown
+claude_profiles:        # which local Claude logins to poll; absent = just the default one
+  - config_dir: ~/.claude          # the default login; identity from ~/.claude.json
+  - config_dir: ~/.claude-alli     # a second login under its own CLAUDE_CONFIG_DIR
+    refresh: true                  # keep this login's token alive (see below)
 ```
 
-local logins are polled directly, with the account read from `~/.claude.json` and `~/.codex/auth.json`.
+local logins are polled directly, with the account read from each profile's `.claude.json` (`~/.claude.json` for the default) and `~/.codex/auth.json`.
+
+`claude_profiles` lists the Claude logins to poll, one series each. list every login you want when you set it; leaving it out keeps the single default login (today's behavior). a `config_dir` at the default location (`~/.claude`) reads the shared credential chain (env token, credentials file, then the keychain) exactly as before; any other `config_dir` reads that profile's own keychain item.
+
+`refresh: true` makes the exporter keep that profile's access token alive: before a poll within 15 minutes of expiry, and after the usage endpoint rejects the token, it exchanges the refresh token at `platform.claude.com` and writes the new token back to the same keychain item. only turn this on for a login Claude Code is **not** using. Claude Code refreshes a login's token only while that login is active and rotates the refresh token when it does; a login it drives stays fresh on its own, and a second refresher would race it and can log you out. so refresh is refused on the default-location profile, and should stay off for any profile you actually run Claude Code under. an idle profile, by contrast, expires within about 8 hours unless the exporter refreshes it. when a refresh token has itself expired, the exporter logs the exact re-login command (`CLAUDE_CONFIG_DIR=<dir> claude`, then `/login`) and reports `llm_scrape_success 0`.
+
+`headroom-exporter -refresh-profile <config_dir>` refreshes one configured, refreshing profile once and prints the new expiry, to check the setup by hand. duplicate or missing `config_dir`s are refused at startup.
 
 CLIProxyAPI accounts are never polled upstream. the proxy records the `anthropic-ratelimit-unified-*` headers of the last response it got for each credential, and the exporter reads that record from its credential listing. so a remote account has Session and Weekly only (no per-model limits, no credits), and the numbers change only when traffic flows through the proxy. the data's age is the record's `observed_at`, which is what `llm_scrape_timestamp_seconds` shows and what `cliproxy.max_age` counts from. a window whose reset has passed since then reads 0. only claude credentials are read; disabled ones and accounts that are also logged in locally are skipped.
 

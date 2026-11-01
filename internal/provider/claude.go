@@ -33,6 +33,11 @@ type ClaudeSource struct {
 	Token   func() (string, error)
 	Client  *http.Client
 	BaseURL string
+	// Refresh, when set, is called after the usage endpoint rejects the token
+	// as expired. It returns a fresh token to retry the fetch once with. Only
+	// a profile that owns its own token (not the shared credential chain) sets
+	// this, so a refresh here never races Claude Code.
+	Refresh func() (string, error)
 }
 
 // NewClaude builds a Claude provider over src.
@@ -331,13 +336,29 @@ func fetchClaude(src ClaudeSource) (*FetchResult, bool, error) {
 	}
 
 	data, err := fetchClaudeAPI(client, baseURL, token)
+	if err != nil && isClaudeAuthError(err) && src.Refresh != nil {
+		// The stored token was accepted locally but the endpoint rejected it,
+		// so force a refresh and try once more with the new token.
+		if refreshed, rerr := src.Refresh(); rerr != nil {
+			return nil, true, humanize("Claude", rerr)
+		} else {
+			data, err = fetchClaudeAPI(client, baseURL, refreshed)
+		}
+	}
 	if err != nil {
-		isAuth := strings.Contains(err.Error(), "expired") || strings.Contains(err.Error(), "authenticate")
-		return nil, isAuth, humanize("Claude", err)
+		return nil, isClaudeAuthError(err), humanize("Claude", err)
 	}
 
 	cats, extra := parseClaude(data)
 	return &FetchResult{Categories: cats, Extra: extra, Credits: parseClaudeCredits(data)}, false, nil
+}
+
+// isClaudeAuthError reports whether err is the usage endpoint turning a token
+// away. A refresh of a revoked or rotated token can fix it; a rate limit or a
+// network fault cannot.
+func isClaudeAuthError(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "expired") || strings.Contains(msg, "authenticate")
 }
 
 // fetchClaudeAPI retrieves usage data from the Claude API using the provided

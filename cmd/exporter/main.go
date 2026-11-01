@@ -55,6 +55,23 @@ type config struct {
 	Listen    string                    `yaml:"listen"`
 	Providers map[string]providerConfig `yaml:"providers"`
 	CLIProxy  cliproxyConfig            `yaml:"cliproxy"`
+
+	// ClaudeProfiles is the resolved set of local Claude logins to poll, one
+	// state each. It always holds at least one profile.
+	ClaudeProfiles []claudeProfile `yaml:"-"`
+}
+
+// claudeProfile is one local Claude login the exporter polls.
+type claudeProfile struct {
+	// ConfigDir is the cleaned absolute config directory. For the implicit
+	// profile it is the env-or-home location today's build would use.
+	ConfigDir string
+	// Refresh turns on token refresh. Never true for a chain profile.
+	Refresh bool
+	// Chain uses the shared credential chain (env, file, then the unsuffixed
+	// keychain item) and the env-aware identity, i.e. today's behavior. It is
+	// the profile Claude Code itself drives, so it is never refreshed here.
+	Chain bool
 }
 
 // cliproxyConfig points the exporter at a CLIProxyAPI server, whose
@@ -174,7 +191,40 @@ func defaultConfig() config {
 			Relist:     "5m",
 			MaxAge:     "6h",
 		},
+		ClaudeProfiles: []claudeProfile{implicitClaudeProfile()},
 	}
+}
+
+// implicitClaudeProfile is the single profile used when claude_profiles is
+// absent: today's behavior, the env-or-home config dir through the shared
+// credential chain, never refreshed.
+func implicitClaudeProfile() claudeProfile {
+	dir := os.Getenv("CLAUDE_CONFIG_DIR")
+	if dir == "" {
+		if home, err := os.UserHomeDir(); err == nil {
+			dir = filepath.Join(home, ".claude")
+		} else {
+			dir = ".claude"
+		}
+	}
+	return claudeProfile{ConfigDir: provider.ClaudeCleanConfigDir(dir), Chain: true}
+}
+
+// validateClaudeProfiles rejects a listed profile whose directory is missing
+// or appears twice.
+func validateClaudeProfiles(profiles []claudeProfile) error {
+	seen := make(map[string]bool, len(profiles))
+	for _, p := range profiles {
+		if seen[p.ConfigDir] {
+			return fmt.Errorf("claude_profiles: duplicate config_dir %s", p.ConfigDir)
+		}
+		seen[p.ConfigDir] = true
+		info, err := os.Stat(p.ConfigDir)
+		if err != nil || !info.IsDir() {
+			return fmt.Errorf("claude_profiles: config_dir %s is not a directory", p.ConfigDir)
+		}
+	}
+	return nil
 }
 
 func loadConfig(path string) (config, error) {
@@ -199,9 +249,32 @@ func loadConfig(path string) (config, error) {
 			Relist     *string `yaml:"relist"`
 			MaxAge     *string `yaml:"max_age"`
 		} `yaml:"cliproxy"`
+		ClaudeProfiles *[]struct {
+			ConfigDir *string `yaml:"config_dir"`
+			Refresh   *bool   `yaml:"refresh"`
+		} `yaml:"claude_profiles"`
 	}
 	if err := yaml.Unmarshal(data, &overrides); err != nil {
 		return cfg, fmt.Errorf("parsing %s: %w", path, err)
+	}
+	if cp := overrides.ClaudeProfiles; cp != nil {
+		profiles := make([]claudeProfile, 0, len(*cp))
+		for i, entry := range *cp {
+			if entry.ConfigDir == nil || strings.TrimSpace(*entry.ConfigDir) == "" {
+				return cfg, fmt.Errorf("claude_profiles[%d]: config_dir must not be empty", i)
+			}
+			dir := provider.ClaudeCleanConfigDir(*entry.ConfigDir)
+			refresh := entry.Refresh != nil && *entry.Refresh
+			chain := provider.ClaudeDefaultConfigDir(dir)
+			if chain && refresh {
+				return cfg, fmt.Errorf("claude_profiles[%d] %s: refresh must stay off for the default profile; Claude Code rotates its token", i, dir)
+			}
+			profiles = append(profiles, claudeProfile{ConfigDir: dir, Refresh: refresh, Chain: chain})
+		}
+		if err := validateClaudeProfiles(profiles); err != nil {
+			return cfg, err
+		}
+		cfg.ClaudeProfiles = profiles
 	}
 	if overrides.Listen != nil {
 		cfg.Listen = *overrides.Listen
@@ -250,12 +323,10 @@ func defaultConfigPath() string {
 	return filepath.Join(home, ".config", "headroom-exporter", "config.yaml")
 }
 
-// localIdentity names the account a local login is using, or nil when the
-// provider cannot say.
+// localIdentity names the account a non-Claude local login is using, or nil
+// when the provider cannot say. Claude is handled per profile.
 func localIdentity(id string) func() string {
 	switch id {
-	case "claude":
-		return provider.ClaudeLoginEmail
 	case "codex":
 		return provider.CodexLoginEmail
 	default:
@@ -263,9 +334,54 @@ func localIdentity(id string) func() string {
 	}
 }
 
+// claudeProviderFor builds the provider and identity for one Claude profile.
+// A chain profile keeps today's behavior: the shared credential chain and the
+// env-aware identity. Any other profile reads its own keychain item and, when
+// refresh is on, keeps that item's token alive.
+func claudeProviderFor(p claudeProfile) (provider.Provider, func() string) {
+	if p.Chain {
+		return provider.NewClaude(provider.ClaudeSource{}), provider.ClaudeLoginEmail
+	}
+	src := provider.NewClaudeKeychainSource(p.ConfigDir, p.Refresh)
+	cs := provider.ClaudeSource{Token: src.Token}
+	if p.Refresh {
+		cs.Refresh = src.ForceRefresh
+	}
+	dir := p.ConfigDir
+	return provider.NewClaude(cs), func() string { return provider.ClaudeConfigDirLoginEmail(dir) }
+}
+
+// runRefreshProfile refreshes one configured, refreshing profile's token once
+// and reports the new expiry and account. It prints no token.
+func runRefreshProfile(cfg config, configDir string) error {
+	want := provider.ClaudeCleanConfigDir(configDir)
+	for _, p := range cfg.ClaudeProfiles {
+		if p.ConfigDir != want {
+			continue
+		}
+		if p.Chain || !p.Refresh {
+			return fmt.Errorf("profile %s is not configured with refresh: true", want)
+		}
+		src := provider.NewClaudeKeychainSource(p.ConfigDir, true)
+		expiry, err := src.RefreshNow()
+		if err != nil {
+			return err
+		}
+		account := provider.ClaudeConfigDirLoginEmail(p.ConfigDir)
+		if account == "" {
+			account = "unknown"
+		}
+		fmt.Printf("refreshed %s: account %s, token now valid until %s\n",
+			want, account, expiry.Local().Format(time.RFC3339))
+		return nil
+	}
+	return fmt.Errorf("no configured claude profile with config_dir %s", want)
+}
+
 func main() {
 	configPath := flag.String("config", defaultConfigPath(), "path to config file")
 	showVersion := flag.Bool("version", false, "print the build revision and exit")
+	refreshProfile := flag.String("refresh-profile", "", "refresh one claude profile's token once, then exit")
 	flag.Parse()
 
 	rev := buildRevision()
@@ -273,19 +389,29 @@ func main() {
 		fmt.Println(rev)
 		return
 	}
-	log.Printf("headroom-exporter revision %s", rev)
 
 	cfg, err := loadConfig(*configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Printf("no config at %s, using defaults", *configPath)
+			if *refreshProfile == "" {
+				log.Printf("no config at %s, using defaults", *configPath)
+			}
 			cfg = defaultConfig()
 		} else {
 			log.Fatalf("loading config: %v", err)
 		}
-	} else {
+	} else if *refreshProfile == "" {
 		log.Printf("loaded config from %s", *configPath)
 	}
+
+	if *refreshProfile != "" {
+		if err := runRefreshProfile(cfg, *refreshProfile); err != nil {
+			log.Fatalf("refresh-profile: %v", err)
+		}
+		return
+	}
+
+	log.Printf("headroom-exporter revision %s", rev)
 	for _, id := range cfg.unknownProviders() {
 		log.Printf("warning: config names unknown provider %q; it has no poller", id)
 	}
@@ -295,6 +421,18 @@ func main() {
 		interval, maxAge, err := cfg.providerConfig(p.ID).durations()
 		if err != nil {
 			log.Fatalf("provider %s: %v", p.ID, err)
+		}
+		if p.ID == "claude" {
+			for _, profile := range cfg.ClaudeProfiles {
+				prov, identity := claudeProviderFor(profile)
+				s := mc.addLocal(prov, identity, interval, maxAge)
+				refresh := ""
+				if profile.Refresh {
+					refresh = ", refreshing"
+				}
+				log.Printf("registered %s [%s%s] (interval %s, max_age %s)", s.logName(), profile.ConfigDir, refresh, interval, maxAge)
+			}
+			continue
 		}
 		s := mc.addLocal(p, localIdentity(p.ID), interval, maxAge)
 		log.Printf("registered %s (interval %s, max_age %s)", s.logName(), interval, maxAge)
