@@ -3,6 +3,7 @@ package parse
 import (
 	"testing"
 	"time"
+	_ "time/tzdata"
 )
 
 func TestCalcSleepRecoveryPct_ThreeNights(t *testing.T) {
@@ -107,6 +108,39 @@ func TestCalcSleepRecoveryPct_GradualDrain(t *testing.T) {
 		if diff > maxDiff {
 			t.Errorf("Cliff detected between hours: diff=%.4f, max expected=%.4f", diff, maxDiff)
 		}
+	}
+}
+
+func TestCalcSleepRecoveryPct_SleepEndsAtLocalSevenOnDSTNights(t *testing.T) {
+	chicago, err := time.LoadLocation("America/Chicago")
+	if err != nil {
+		t.Fatal(err)
+	}
+	windowSeconds := 7 * 24 * 3600
+	cases := []struct {
+		name      string
+		now       time.Time
+		reset     time.Time
+		wantHours float64
+	}{
+		// Clocks fall back at 02:00 on Nov 1 2026, so midnight to 07:00 CST
+		// is eight elapsed hours; at 06:30 half an hour of sleep remains.
+		{"fall back", time.Date(2026, 11, 1, 6, 30, 0, 0, chicago), time.Date(2026, 11, 1, 12, 0, 0, 0, chicago), 0.5},
+		// Clocks spring forward at 02:00 on Mar 8 2026, so midnight to 07:00
+		// CDT is six elapsed hours; at 07:30 the night is over.
+		{"spring forward", time.Date(2026, 3, 8, 7, 30, 0, 0, chicago), time.Date(2026, 3, 8, 12, 0, 0, 0, chicago), 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			NowFunc = func() time.Time { return c.now }
+			defer func() { NowFunc = time.Now }()
+
+			got := CalcSleepRecoveryPct(c.reset.UTC().Format(time.RFC3339), windowSeconds)
+			want := c.wantHours * 3600 / float64(windowSeconds) * 100
+			if got < want-0.001 || got > want+0.001 {
+				t.Errorf("CalcSleepRecoveryPct = %.4f, want %.4f (%.1f hours)", got, want, c.wantHours)
+			}
+		})
 	}
 }
 

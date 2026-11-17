@@ -81,11 +81,13 @@ func CalcSleepRecoveryPct(resetsAt string, windowSeconds int) float64 {
 	// drains gradually through the night instead of dropping at midnight.
 	var sleepSeconds float64
 	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
-	sleepDuration := time.Duration(DefaultSleepHoursPerNight * float64(time.Hour))
+	sleepMinutes := int(DefaultSleepHoursPerNight * 60)
 
 	for day.Before(localReset) {
-		sleepStart := day                  // midnight
-		sleepEnd := day.Add(sleepDuration) // 7am
+		sleepStart := day // midnight
+		// 7am on the clock. Midnight plus seven elapsed hours is 6am or 8am
+		// on the nights daylight saving time starts or ends.
+		sleepEnd := time.Date(day.Year(), day.Month(), day.Day(), 0, sleepMinutes, 0, 0, loc)
 
 		// Clamp to [now, reset]
 		if sleepStart.Before(now) {
