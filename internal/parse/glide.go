@@ -72,15 +72,36 @@ func CalcSleepRecoveryPct(resetsAt string, windowSeconds int) float64 {
 	loc := now.Location()
 	localReset := t.In(loc)
 
-	nowDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
-	resetDate := time.Date(localReset.Year(), localReset.Month(), localReset.Day(), 0, 0, 0, 0, loc)
-
-	nights := int(resetDate.Sub(nowDate) / (24 * time.Hour))
-	if nights < 0 {
-		nights = 0
+	if !localReset.After(now) {
+		return 0.0
 	}
 
-	sleepSeconds := float64(nights) * DefaultSleepHoursPerNight * 3600
+	// Walk each sleep period (midnight to 7am) between now and reset.
+	// Count only the hours that are still in the future, so the recovery
+	// drains gradually through the night instead of dropping at midnight.
+	var sleepSeconds float64
+	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	sleepDuration := time.Duration(DefaultSleepHoursPerNight * float64(time.Hour))
+
+	for day.Before(localReset) {
+		sleepStart := day                  // midnight
+		sleepEnd := day.Add(sleepDuration) // 7am
+
+		// Clamp to [now, reset]
+		if sleepStart.Before(now) {
+			sleepStart = now
+		}
+		if sleepEnd.After(localReset) {
+			sleepEnd = localReset
+		}
+
+		if sleepEnd.After(sleepStart) {
+			sleepSeconds += sleepEnd.Sub(sleepStart).Seconds()
+		}
+
+		day = day.AddDate(0, 0, 1)
+	}
+
 	pct := sleepSeconds / float64(windowSeconds) * 100
 	if pct > 100 {
 		pct = 100
